@@ -291,7 +291,7 @@ pub use self::{
     },
     ser::{
         to_bson, to_bson_with_options, to_document, to_document_with_options, to_raw_document_buf,
-        to_vec, Serializer, SerializerOptions,
+        to_vec, SerializerOptions,
     },
     uuid::{Uuid, UuidRepresentation},
 };

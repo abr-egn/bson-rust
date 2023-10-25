@@ -25,8 +25,7 @@ use crate::{
     DateTime,
     Deserializer,
     Document,
-    Serializer,
-    Timestamp,
+    Timestamp, to_vec, from_slice,
 };
 
 use serde::{Deserialize, Serialize};
@@ -36,32 +35,6 @@ use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
 };
-
-#[test]
-fn test_ser_vec() {
-    let _guard = LOCK.run_concurrently();
-    let vec = vec![1, 2, 3];
-
-    let serializer = Serializer::new();
-    let result = vec.serialize(serializer).unwrap();
-
-    let expected = bson!([1, 2, 3]);
-    assert_eq!(expected, result);
-}
-
-#[test]
-fn test_ser_map() {
-    let _guard = LOCK.run_concurrently();
-    let mut map = BTreeMap::new();
-    map.insert("x", 0);
-    map.insert("y", 1);
-
-    let serializer = Serializer::new();
-    let result = map.serialize(serializer).unwrap();
-
-    let expected = bson!({ "x": 0, "y": 1 });
-    assert_eq!(expected, result);
-}
 
 #[test]
 fn test_de_vec() {
@@ -1047,4 +1020,55 @@ fn oid_as_hex_string() {
 fn fuzz_regression_00() {
     let buf: &[u8] = &[227, 0, 35, 4, 2, 0, 255, 255, 255, 127, 255, 255, 255, 47];
     let _ = crate::from_slice::<Document>(buf);
+}
+
+#[test]
+fn implicit_human_readable() {
+    struct Thing;
+    impl Serialize for Thing {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer {
+            let text = if serializer.is_human_readable() {
+                "human readable"
+            } else {
+                "not human readable"
+            };
+            serializer.serialize_str(text)
+        }
+    }
+    assert_eq!(Bson::String("human readable".to_string()), to_bson(&Thing).unwrap());
+}
+
+#[test]
+fn implicit_bson_composite_identity() {
+    let ts = Timestamp { time: 1, increment: 2 };
+    assert_eq!(Bson::Timestamp(ts.clone()), to_bson(&ts).unwrap());
+}
+
+#[test]
+fn implicit_json_is_extjson() {
+    let js = json!({ "$timestamp": { "t": 1, "i": 2 } });
+    assert_eq!(Bson::Timestamp(Timestamp { time: 1, increment: 2 }), to_bson(&js).unwrap());
+}
+
+#[test]
+fn implicit_extjson_in_bson() {
+    let extbs = doc! { "$timestamp": { "t": 1, "i": 2 } };
+    assert_eq!(Bson::Timestamp(Timestamp { time: 1, increment: 2 }), to_bson(&extbs).unwrap());
+}
+
+// TODO RUST-1693: remove this
+#[test]
+fn implicit_raw_extjson_in_bson() {
+    let extbs = rawdoc! { "v": { "$timestamp": { "t": 1, "i": 2 } } };
+    let bytes = to_vec(&extbs).unwrap();
+    assert_eq!(extbs, from_slice(&bytes).unwrap());
+    assert_eq!(doc! { "v":  Timestamp { time: 1, increment: 2 } }, from_slice(&bytes).unwrap());
+}
+
+#[test]
+fn implicit_rawbson_composite_identity() {
+    let raw = rawdoc! { "v": Timestamp { time: 1, increment: 2 } };
+    assert_eq!(Bson::Document(doc! { "v": Timestamp { time: 1, increment: 2 } }), to_bson(&raw).unwrap());
 }

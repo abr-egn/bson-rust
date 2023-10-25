@@ -1,6 +1,5 @@
-use crate::{spec::BinarySubtype, Document, RawBinaryRef};
+use crate::{spec::BinarySubtype, RawBinaryRef};
 use std::{
-    convert::TryFrom,
     error,
     fmt::{self, Display},
 };
@@ -53,34 +52,6 @@ impl Binary {
             None => BinarySubtype::Generic,
         };
         Ok(Binary { subtype, bytes })
-    }
-
-    pub(crate) fn from_extended_doc(doc: &Document) -> Option<Self> {
-        let binary_doc = doc.get_document("$binary").ok()?;
-
-        if let Ok(bytes) = binary_doc.get_str("base64") {
-            let bytes = base64::decode(bytes).ok()?;
-            let subtype = binary_doc.get_str("subType").ok()?;
-            let subtype = hex::decode(subtype).ok()?;
-            if subtype.len() == 1 {
-                Some(Self {
-                    bytes,
-                    subtype: subtype[0].into(),
-                })
-            } else {
-                None
-            }
-        } else {
-            // in non-human-readable mode, RawBinary will serialize as
-            // { "$binary": { "bytes": <bytes>, "subType": <i32> } };
-            let binary = binary_doc.get_binary_generic("bytes").ok()?;
-            let subtype = binary_doc.get_i32("subType").ok()?;
-
-            Some(Self {
-                bytes: binary.clone(),
-                subtype: u8::try_from(subtype).ok()?.into(),
-            })
-        }
     }
 
     /// Borrow the contents as a [`RawBinaryRef`].

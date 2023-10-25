@@ -22,7 +22,7 @@
 //! BSON definition
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
 };
 
@@ -30,7 +30,7 @@ use serde_json::{json, Value};
 
 pub use crate::document::Document;
 use crate::{
-    oid::{self, ObjectId},
+    oid,
     spec::{BinarySubtype, ElementType},
     Binary,
     Decimal128,
@@ -649,198 +649,6 @@ impl Bson {
             }
             _ => panic!("Attempted conversion of invalid data type: {}", self),
         }
-    }
-
-    pub(crate) fn from_extended_document(doc: Document) -> Bson {
-        if doc.len() > 2 {
-            return Bson::Document(doc);
-        }
-
-        let mut keys: Vec<_> = doc.keys().map(|s| s.as_str()).collect();
-        keys.sort_unstable();
-
-        match keys.as_slice() {
-            ["$oid"] => {
-                if let Ok(oid) = doc.get_str("$oid") {
-                    if let Ok(oid) = ObjectId::parse_str(oid) {
-                        return Bson::ObjectId(oid);
-                    }
-                }
-            }
-
-            ["$symbol"] => {
-                if let Ok(symbol) = doc.get_str("$symbol") {
-                    return Bson::Symbol(symbol.into());
-                }
-            }
-
-            ["$numberInt"] => {
-                if let Ok(i) = doc.get_str("$numberInt") {
-                    if let Ok(i) = i.parse() {
-                        return Bson::Int32(i);
-                    }
-                }
-            }
-
-            ["$numberLong"] => {
-                if let Ok(i) = doc.get_str("$numberLong") {
-                    if let Ok(i) = i.parse() {
-                        return Bson::Int64(i);
-                    }
-                }
-            }
-
-            ["$numberDouble"] => match doc.get_str("$numberDouble") {
-                Ok("Infinity") => return Bson::Double(std::f64::INFINITY),
-                Ok("-Infinity") => return Bson::Double(std::f64::NEG_INFINITY),
-                Ok("NaN") => return Bson::Double(std::f64::NAN),
-                Ok(other) => {
-                    if let Ok(d) = other.parse() {
-                        return Bson::Double(d);
-                    }
-                }
-                _ => {}
-            },
-
-            ["$numberDecimal"] => {
-                if let Ok(d) = doc.get_str("$numberDecimal") {
-                    if let Ok(d) = d.parse() {
-                        return Bson::Decimal128(d);
-                    }
-                }
-            }
-
-            ["$numberDecimalBytes"] => {
-                if let Ok(bytes) = doc.get_binary_generic("$numberDecimalBytes") {
-                    if let Ok(b) = bytes.clone().try_into() {
-                        return Bson::Decimal128(Decimal128 { bytes: b });
-                    }
-                }
-            }
-
-            ["$binary"] => {
-                if let Some(binary) = Binary::from_extended_doc(&doc) {
-                    return Bson::Binary(binary);
-                }
-            }
-
-            ["$code"] => {
-                if let Ok(code) = doc.get_str("$code") {
-                    return Bson::JavaScriptCode(code.into());
-                }
-            }
-
-            ["$code", "$scope"] => {
-                if let Ok(code) = doc.get_str("$code") {
-                    if let Ok(scope) = doc.get_document("$scope") {
-                        return Bson::JavaScriptCodeWithScope(JavaScriptCodeWithScope {
-                            code: code.into(),
-                            scope: scope.clone(),
-                        });
-                    }
-                }
-            }
-
-            ["$timestamp"] => {
-                if let Ok(timestamp) = doc.get_document("$timestamp") {
-                    if let Ok(t) = timestamp.get_i32("t") {
-                        if let Ok(i) = timestamp.get_i32("i") {
-                            return Bson::Timestamp(Timestamp {
-                                time: t as u32,
-                                increment: i as u32,
-                            });
-                        }
-                    }
-
-                    if let Ok(t) = timestamp.get_i64("t") {
-                        if let Ok(i) = timestamp.get_i64("i") {
-                            if t >= 0
-                                && i >= 0
-                                && t <= (std::u32::MAX as i64)
-                                && i <= (std::u32::MAX as i64)
-                            {
-                                return Bson::Timestamp(Timestamp {
-                                    time: t as u32,
-                                    increment: i as u32,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
-            ["$regularExpression"] => {
-                if let Ok(regex) = doc.get_document("$regularExpression") {
-                    if let Ok(pattern) = regex.get_str("pattern") {
-                        if let Ok(options) = regex.get_str("options") {
-                            return Bson::RegularExpression(Regex::new(pattern, options));
-                        }
-                    }
-                }
-            }
-
-            ["$dbPointer"] => {
-                if let Ok(db_pointer) = doc.get_document("$dbPointer") {
-                    if let Ok(ns) = db_pointer.get_str("$ref") {
-                        if let Ok(id) = db_pointer.get_object_id("$id") {
-                            return Bson::DbPointer(DbPointer {
-                                namespace: ns.into(),
-                                id,
-                            });
-                        }
-                    }
-                }
-            }
-
-            ["$date"] => {
-                if let Ok(date) = doc.get_i64("$date") {
-                    return Bson::DateTime(crate::DateTime::from_millis(date));
-                }
-
-                if let Ok(date) = doc.get_str("$date") {
-                    if let Ok(dt) = crate::DateTime::parse_rfc3339_str(date) {
-                        return Bson::DateTime(dt);
-                    }
-                }
-            }
-
-            ["$minKey"] => {
-                let min_key = doc.get("$minKey");
-
-                if min_key == Some(&Bson::Int32(1)) || min_key == Some(&Bson::Int64(1)) {
-                    return Bson::MinKey;
-                }
-            }
-
-            ["$maxKey"] => {
-                let max_key = doc.get("$maxKey");
-
-                if max_key == Some(&Bson::Int32(1)) || max_key == Some(&Bson::Int64(1)) {
-                    return Bson::MaxKey;
-                }
-            }
-
-            ["$undefined"] => {
-                if doc.get("$undefined") == Some(&Bson::Boolean(true)) {
-                    return Bson::Undefined;
-                }
-            }
-
-            _ => {}
-        };
-
-        Bson::Document(
-            doc.into_iter()
-                .map(|(k, v)| {
-                    let v = match v {
-                        Bson::Document(v) => Bson::from_extended_document(v),
-                        other => other,
-                    };
-
-                    (k, v)
-                })
-                .collect(),
-        )
     }
 }
 

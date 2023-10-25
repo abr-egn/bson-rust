@@ -27,7 +27,7 @@ mod serde;
 
 pub use self::{
     error::{Error, Result},
-    serde::{Serializer, SerializerOptions},
+    serde::SerializerOptions,
 };
 
 use std::{io::Write, iter::FromIterator, mem};
@@ -37,7 +37,7 @@ use crate::{
     de::MAX_BSON_SIZE,
     spec::BinarySubtype,
     Binary,
-    RawDocumentBuf,
+    RawDocumentBuf, from_slice,
 };
 use ::serde::{ser::Error as SerdeError, Serialize};
 
@@ -191,12 +191,12 @@ pub(crate) fn serialize_bson<W: Write + ?Sized>(
 /// the format is human readable or not. To serialize to a [`Document`] with a serializer that
 /// presents itself as not human readable, use [`to_bson_with_options`] with
 /// [`SerializerOptions::human_readable`] set to false.
-pub fn to_bson<T: ?Sized>(value: &T) -> Result<Bson>
+pub fn to_bson<T>(value: &T) -> Result<Bson>
 where
     T: Serialize,
 {
-    let ser = Serializer::new();
-    value.serialize(ser)
+    to_bson_with_options(value, SerializerOptions { human_readable: Some(true) })
+
 }
 
 /// Encode a `T` into a [`Bson`] value, configuring the underlying serializer with the provided
@@ -219,8 +219,22 @@ pub fn to_bson_with_options<T: ?Sized>(value: &T, options: SerializerOptions) ->
 where
     T: Serialize,
 {
-    let ser = Serializer::new_with_options(options);
-    value.serialize(ser)
+    #[derive(Serialize)]
+    struct Helper<T> {
+        value: T,
+    }
+    let mut serializer = raw::Serializer::new_with_options(options);
+    Helper { value }.serialize(&mut serializer)?;
+    let bytes = serializer.into_vec();
+    let wrapped_bson: Bson = from_slice(&bytes).map_err(|e| Error::SerializationError { message:e.to_string() })?;
+    match wrapped_bson {
+        Bson::Document(mut d) => {
+            d.remove("value").ok_or_else(|| Error::SerializationError { message: "missing value".to_string() })
+        }
+        _ => {
+            Err(Error::SerializationError { message: "invalid intermediate value".to_string() })
+        }
+    }
 }
 
 /// Encode a `T` Serializable into a BSON [`Document`].

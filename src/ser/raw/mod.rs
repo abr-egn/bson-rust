@@ -30,6 +30,8 @@ pub(crate) struct Serializer {
 
     /// Hint provided by the type being serialized.
     hint: SerializerHint,
+
+    options: super::SerializerOptions,
 }
 
 /// Various bits of information that the serialized type can provide to the serializer to
@@ -56,10 +58,15 @@ impl SerializerHint {
 
 impl Serializer {
     pub(crate) fn new() -> Self {
+        Self::new_with_options(super::SerializerOptions { human_readable: Some(false) })
+    }
+
+    pub(crate) fn new_with_options(options: super::SerializerOptions) -> Self {
         Self {
             bytes: Vec::new(),
             type_index: 0,
             hint: SerializerHint::None,
+            options: options,
         }
     }
 
@@ -115,7 +122,7 @@ impl<'a> serde::Serializer for &'a mut Serializer {
     type SerializeStructVariant = VariantSerializer<'a>;
 
     fn is_human_readable(&self) -> bool {
-        false
+        self.options.human_readable.unwrap_or(true)
     }
 
     #[inline]
@@ -194,8 +201,14 @@ impl<'a> serde::Serializer for &'a mut Serializer {
 
     #[inline]
     fn serialize_str(self, v: &str) -> Result<Self::Ok> {
-        self.update_element_type(ElementType::String)?;
-        write_string(&mut self.bytes, v)
+        if matches!(self.hint.take(), SerializerHint::Uuid) {
+            self.update_element_type(ElementType::Binary)?;
+            let uuid = crate::Uuid::parse_str(v).map_err(Error::custom)?;
+            write_binary(&mut self.bytes, &uuid.bytes(), BinarySubtype::Uuid)
+        } else {
+            self.update_element_type(ElementType::String)?;
+            write_string(&mut self.bytes, v)
+        }
     }
 
     #[inline]
