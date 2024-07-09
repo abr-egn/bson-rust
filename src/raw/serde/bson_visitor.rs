@@ -189,6 +189,13 @@ impl OwnedOrBorrowedRawBsonVisitor {
                     .into()
                 }
             }
+            "$uuid" => {
+                let v: String = map.next_value()?;
+                let uuid = models::Uuid { value: v }
+                    .parse()
+                    .map_err(SerdeError::custom)?;
+                RawBson::Binary(uuid).into()
+            }
             RAW_DOCUMENT_NEWTYPE => {
                 let bson = map.next_value::<&[u8]>()?;
                 let doc = RawDocument::from_bytes(bson).map_err(SerdeError::custom)?;
