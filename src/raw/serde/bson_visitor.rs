@@ -6,16 +6,17 @@ use serde_bytes::ByteBuf;
 use crate::{
     de::convert_unsigned_to_signed_raw,
     extjson::models::{
+        self,
         BorrowedBinaryBody,
         BorrowedDbPointerBody,
         BorrowedRegexBody,
+        DateTimeBody,
         TimestampBody,
     },
     oid::ObjectId,
     raw::{RAW_ARRAY_NEWTYPE, RAW_DOCUMENT_NEWTYPE},
     spec::BinarySubtype,
     Binary,
-    DateTime,
     DbPointer,
     Decimal128,
     RawArray,
@@ -273,8 +274,13 @@ impl<'de> Visitor<'de> for OwnedOrBorrowedRawBsonVisitor {
                 }
             }
             "$date" => {
-                let date: i64 = map.next_value()?;
-                Ok(RawBsonRef::DateTime(DateTime::from_millis(date)).into())
+                let body: DateTimeBody = map.next_value()?;
+                Ok(RawBsonRef::DateTime(
+                    models::DateTime { body }
+                        .parse()
+                        .map_err(A::Error::custom)?,
+                )
+                .into())
             }
             "$timestamp" => {
                 let timestamp: TimestampBody = map.next_value()?;

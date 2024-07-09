@@ -25,7 +25,13 @@ use crate::{
     datetime::DateTime,
     document::{Document, IntoIter},
     oid::ObjectId,
-    raw::{RawBsonRef, RAW_ARRAY_NEWTYPE, RAW_BSON_NEWTYPE, RAW_DOCUMENT_NEWTYPE},
+    raw::{
+        serde::OwnedOrBorrowedRawBson,
+        RawBsonRef,
+        RAW_ARRAY_NEWTYPE,
+        RAW_BSON_NEWTYPE,
+        RAW_DOCUMENT_NEWTYPE,
+    },
     serde_helpers::HUMAN_READABLE_NEWTYPE,
     spec::BinarySubtype,
     uuid::UUID_NEWTYPE_NAME,
@@ -124,7 +130,15 @@ impl<'de> Deserialize<'de> for Bson {
     where
         D: de::Deserializer<'de>,
     {
-        deserializer.deserialize_any(BsonVisitor)
+        match OwnedOrBorrowedRawBson::deserialize(deserializer)? {
+            OwnedOrBorrowedRawBson::Owned(value) => value
+                .try_into()
+                .map_err(|e| D::Error::custom(format!("{}", e))),
+            OwnedOrBorrowedRawBson::Borrowed(value) => value
+                .try_into()
+                .map_err(|e| D::Error::custom(format!("{}", e))),
+        }
+        //deserializer.deserialize_any(BsonVisitor)
     }
 }
 
