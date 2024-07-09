@@ -256,6 +256,7 @@ pub(crate) struct DateTime {
 pub(crate) enum DateTimeBody {
     Canonical(Int64),
     Relaxed(String),
+    Raw(i64),
 }
 
 impl DateTimeBody {
@@ -282,6 +283,7 @@ impl DateTime {
                 })?;
                 Ok(datetime)
             }
+            DateTimeBody::Raw(millis) => Ok(crate::DateTime::from_millis(millis)),
         }
     }
 }
