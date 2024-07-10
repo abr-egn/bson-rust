@@ -48,6 +48,7 @@ use ::serde::{
 
 pub(crate) use self::serde::{convert_unsigned_to_signed_raw, BsonVisitor};
 
+#[cfg(test)]
 pub(crate) use self::raw::Deserializer as RawDeserializer;
 
 pub(crate) const MAX_BSON_SIZE: i32 = 16 * 1024 * 1024;
