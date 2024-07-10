@@ -515,7 +515,7 @@ impl RawDocument {
         self.as_bytes().len() == MIN_BSON_DOCUMENT_SIZE as usize
     }
 
-    pub(crate) fn read_cstring_at(&self, start_at: usize) -> Result<&str> {
+    pub(crate) fn cstring_bytes_at(&self, start_at: usize) -> Result<&[u8]> {
         let buf = &self.as_bytes()[start_at..];
 
         let mut splits = buf.splitn(2, |x| *x == 0);
@@ -523,12 +523,17 @@ impl RawDocument {
             .next()
             .ok_or_else(|| Error::new_without_key(ErrorKind::new_malformed("no value")))?;
         if splits.next().is_some() {
-            Ok(try_to_str(value)?)
+            Ok(value)
         } else {
             Err(Error::new_without_key(ErrorKind::new_malformed(
                 "expected null terminator",
             )))
         }
+    }
+
+    pub(crate) fn read_cstring_at(&self, start_at: usize) -> Result<&str> {
+        let bytes = self.cstring_bytes_at(start_at)?;
+        try_to_str(bytes)
     }
 }
 
@@ -621,7 +626,12 @@ impl crate::Document {
         while let Some(r) = iter.next() {
             let elt = r?;
             let raw_val = elt.value_utf8_lossy()?;
-            let val: crate::Bson = raw_val.try_into()?;
+            let val = match raw_val {
+                crate::RawBson::Document(subdoc) => {
+                    crate::Bson::Document(Document::try_from_utf8_lossy(&subdoc)?)
+                }
+                _ => raw_val.try_into()?,
+            };
             doc.insert(elt.key().to_owned(), val);
         }
         Ok(doc)
