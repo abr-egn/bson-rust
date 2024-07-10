@@ -113,14 +113,16 @@ impl<'de> Deserialize<'de> for Document {
     where
         D: de::Deserializer<'de>,
     {
-        deserializer.deserialize_map(BsonVisitor).and_then(|bson| {
-            if let Bson::Document(doc) = bson {
-                Ok(doc)
-            } else {
-                let err = format!("expected document, found extended JSON data type: {}", bson);
+        match OwnedOrBorrowedRawBson::deserialize(deserializer)?.as_ref() {
+            RawBsonRef::Document(d) => Document::try_from(d).map_err(D::Error::custom),
+            bson => {
+                let err = format!(
+                    "expected document, found extended JSON data type: {:?}",
+                    bson.element_type()
+                );
                 Err(de::Error::invalid_type(Unexpected::Map, &&err[..]))
             }
-        })
+        }
     }
 }
 

@@ -614,6 +614,20 @@ impl TryFrom<&RawDocument> for crate::Document {
     }
 }
 
+impl crate::Document {
+    pub(crate) fn try_from_utf8_lossy(rawdoc: &RawDocument) -> Result<Document> {
+        let mut iter = rawdoc.iter_elements();
+        let mut doc = Document::new();
+        while let Some(r) = iter.next() {
+            let elt = r?;
+            let raw_val = elt.value_utf8_lossy()?;
+            let val: crate::Bson = raw_val.try_into()?;
+            doc.insert(elt.key().to_owned(), val);
+        }
+        Ok(doc)
+    }
+}
+
 impl<'a> IntoIterator for &'a RawDocument {
     type IntoIter = Iter<'a>;
     type Item = Result<(&'a str, RawBsonRef<'a>)>;

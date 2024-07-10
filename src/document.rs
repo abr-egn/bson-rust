@@ -1,7 +1,7 @@
 //! A BSON document represented as an associative HashMap with insertion ordering.
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     error,
     fmt::{self, Debug, Display, Formatter},
     io::{Read, Write},
@@ -10,7 +10,7 @@ use std::{
 
 use ahash::RandomState;
 use indexmap::IndexMap;
-use serde::{de::Error, Deserialize};
+use serde::de::Error;
 
 use crate::{
     bson::{Array, Bson, Timestamp},
@@ -19,6 +19,8 @@ use crate::{
     spec::BinarySubtype,
     Binary,
     Decimal128,
+    RawDocument,
+    RawDocumentBuf,
 };
 
 /// Error to indicate that either a value was empty or it contained an unexpected
@@ -547,7 +549,7 @@ impl Document {
         Ok(())
     }
 
-    fn decode<R: Read + ?Sized>(reader: &mut R, utf_lossy: bool) -> crate::de::Result<Document> {
+    fn decode<R: Read + ?Sized>(reader: &mut R, utf8_lossy: bool) -> crate::de::Result<Document> {
         let length = read_i32(reader)?;
         if length < MIN_BSON_DOCUMENT_SIZE {
             return Err(crate::de::Error::invalid_length(
@@ -555,17 +557,26 @@ impl Document {
                 &"document length must be at least 5",
             ));
         }
-        let ulen: usize =
-            length
-                .try_into()
-                .map_err(|e| crate::de::Error::DeserializationError {
-                    message: format!("invalid document length: {}", e),
-                })?;
+        fn deserialization_error(message: impl Into<String>) -> crate::de::Error {
+            crate::de::Error::DeserializationError {
+                message: message.into(),
+            }
+        }
+        let ulen: usize = length
+            .try_into()
+            .map_err(|e| deserialization_error(format!("invalid document length: {}", e)))?;
         let mut buf = vec![0u8; ulen];
         buf[0..4].copy_from_slice(&length.to_le_bytes());
         reader.read_exact(&mut buf[4..])?;
-        let mut deserializer = crate::de::RawDeserializer::new(&buf, utf_lossy);
-        Document::deserialize(&mut deserializer)
+        RawDocumentBuf::from_bytes(buf)
+            .and_then(|rawdoc| {
+                if utf8_lossy {
+                    Document::try_from_utf8_lossy(&rawdoc)
+                } else {
+                    Document::try_from(&rawdoc as &RawDocument)
+                }
+            })
+            .map_err(|e| deserialization_error(format!("invalid document: {}", e)))
     }
 
     /// Attempts to deserialize a [`Document`] from a byte stream.

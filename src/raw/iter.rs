@@ -256,6 +256,15 @@ impl<'a> RawElement<'a> {
         })
     }
 
+    pub(crate) fn value_utf8_lossy(&self) -> Result<RawBson> {
+        Ok(match self.kind {
+            ElementType::String => {
+                RawBson::String(String::from_utf8_lossy(self.str_bytes()).into_owned())
+            }
+            _ => self.value()?.to_raw_bson(),
+        })
+    }
+
     fn malformed_error(&self, e: impl ToString) -> Error {
         Error::new_with_key(self.key, ErrorKind::new_malformed(e))
     }
@@ -268,8 +277,12 @@ impl<'a> RawElement<'a> {
         &self.doc.as_bytes()[start_at..(start_at + size)]
     }
 
+    fn str_bytes(&self) -> &'a [u8] {
+        self.slice_bounds(self.start_at + 4, self.size - 4 - 1)
+    }
+
     fn read_str(&self) -> Result<&'a str> {
-        try_to_str(self.slice_bounds(self.start_at + 4, self.size - 4 - 1))
+        try_to_str(self.str_bytes())
     }
 
     fn get_oid_at(&self, start_at: usize) -> Result<ObjectId> {
