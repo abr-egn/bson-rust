@@ -1,7 +1,9 @@
 mod binary_subtype;
 mod datetime;
 mod modules;
+#[cfg(feature = "serde")]
 mod serde;
+#[cfg(feature = "serde")]
 mod serde_helpers;
 mod spec;
 

@@ -1,10 +1,7 @@
 use std::{borrow::Cow, convert::TryFrom};
 
-use serde::{ser::SerializeSeq, Deserialize, Serialize};
-
 use super::{
     error::{ValueAccessError, ValueAccessErrorKind, ValueAccessResult},
-    serde::OwnedOrBorrowedRawArray,
     Error,
     RawBinaryRef,
     RawBsonRef,
@@ -13,15 +10,7 @@ use super::{
     RawRegexRef,
     Result,
 };
-use crate::{
-    oid::ObjectId,
-    raw::RAW_ARRAY_NEWTYPE,
-    spec::ElementType,
-    Bson,
-    DateTime,
-    RawArrayBuf,
-    Timestamp,
-};
+use crate::{oid::ObjectId, spec::ElementType, Bson, DateTime, RawArrayBuf, Timestamp};
 
 /// A slice of a BSON document containing a BSON array value (akin to [`std::str`]). This can be
 /// retrieved from a [`RawDocument`] via [`RawDocument::get`].
@@ -282,49 +271,5 @@ impl<'a> Iterator for RawArrayIter<'a> {
             Some(Err(e)) => Some(Err(e)),
             None => None,
         }
-    }
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for &'a RawArray {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match OwnedOrBorrowedRawArray::deserialize(deserializer)? {
-            OwnedOrBorrowedRawArray::Borrowed(b) => Ok(b),
-            o => Err(serde::de::Error::custom(format!(
-                "expected borrowed raw array, instead got owned {:?}",
-                o
-            ))),
-        }
-    }
-}
-
-impl<'a> Serialize for &'a RawArray {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        struct SeqSerializer<'a>(&'a RawArray);
-
-        impl<'a> Serialize for SeqSerializer<'a> {
-            fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-            where
-                S: serde::Serializer,
-            {
-                if serializer.is_human_readable() {
-                    let mut seq = serializer.serialize_seq(None)?;
-                    for v in self.0 {
-                        let v = v.map_err(serde::ser::Error::custom)?;
-                        seq.serialize_element(&v)?;
-                    }
-                    seq.end()
-                } else {
-                    serializer.serialize_bytes(self.0.as_bytes())
-                }
-            }
-        }
-
-        serializer.serialize_newtype_struct(RAW_ARRAY_NEWTYPE, &SeqSerializer(self))
     }
 }

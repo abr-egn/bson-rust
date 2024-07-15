@@ -138,20 +138,9 @@
 #[cfg(test)]
 mod test;
 
-use std::{
-    fmt::{self, Display},
-    str::FromStr,
-};
+use std::fmt::{self, Display};
 
-use serde::{Deserialize, Serialize};
-
-use crate::{de::BsonVisitor, spec::BinarySubtype, Binary, Bson};
-
-/// Special type name used in the [`Uuid`] serialization implementation to indicate a BSON
-/// UUID is being serialized or deserialized. The BSON serializers/deserializers will handle this
-/// name specially, but other serializers/deserializers will just ignore it and use [`uuid::Uuid`]'s
-/// serde integration.
-pub(crate) const UUID_NEWTYPE_NAME: &str = "$__bson_private_uuid";
+use crate::{spec::BinarySubtype, Binary, Bson};
 
 /// A struct modeling a BSON UUID value (i.e. a Binary value with subtype 4).
 ///
@@ -243,45 +232,6 @@ impl Uuid {
     /// the [`uuid`](https://docs.rs/uuid/0.8) crate.
     pub fn to_uuid_1(self) -> uuid::Uuid {
         self.uuid
-    }
-}
-
-impl Serialize for Uuid {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_newtype_struct(UUID_NEWTYPE_NAME, &self.uuid)
-    }
-}
-
-impl<'de> Deserialize<'de> for Uuid {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match deserializer.deserialize_newtype_struct(UUID_NEWTYPE_NAME, BsonVisitor)? {
-            // Need to support deserializing from generic subtypes for non-BSON formats.
-            // When using the BSON deserializer, the newtype name will ensure the subtype is only
-            // ever BinarySubtype::Uuid.
-            Bson::Binary(b)
-                if matches!(b.subtype, BinarySubtype::Uuid | BinarySubtype::Generic) =>
-            {
-                let uuid =
-                    uuid::Uuid::from_slice(b.bytes.as_slice()).map_err(serde::de::Error::custom)?;
-                Ok(Self::from_external_uuid(uuid))
-            }
-            Bson::Binary(b) if b.subtype == BinarySubtype::UuidOld => {
-                Err(serde::de::Error::custom(
-                    "received legacy UUID (subtype 3) but expected regular UUID (subtype 4)",
-                ))
-            }
-            Bson::String(s) => {
-                let uuid = uuid::Uuid::from_str(s.as_str()).map_err(serde::de::Error::custom)?;
-                Ok(Self::from_external_uuid(uuid))
-            }
-            b => Err(serde::de::Error::invalid_type(b.as_unexpected(), &"a UUID")),
-        }
     }
 }
 

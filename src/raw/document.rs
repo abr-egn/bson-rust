@@ -3,14 +3,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use serde::{ser::SerializeMap, Deserialize, Serialize};
-
-use crate::{
-    de::MIN_BSON_DOCUMENT_SIZE,
-    raw::{error::ErrorKind, serde::OwnedOrBorrowedRawDocument, RAW_DOCUMENT_NEWTYPE},
-    DateTime,
-    Timestamp,
-};
+use crate::{raw::error::ErrorKind, DateTime, Timestamp};
 
 use super::{
     error::{ValueAccessError, ValueAccessErrorKind, ValueAccessResult},
@@ -25,6 +18,7 @@ use super::{
     RawIter,
     RawRegexRef,
     Result,
+    MIN_BSON_DOCUMENT_SIZE,
 };
 use crate::{oid::ObjectId, spec::ElementType, Document};
 
@@ -529,49 +523,6 @@ impl RawDocument {
                 "expected null terminator",
             )))
         }
-    }
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for &'a RawDocument {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match OwnedOrBorrowedRawDocument::deserialize(deserializer)? {
-            OwnedOrBorrowedRawDocument::Borrowed(b) => Ok(b),
-            OwnedOrBorrowedRawDocument::Owned(d) => Err(serde::de::Error::custom(format!(
-                "expected borrowed raw document, instead got owned {:?}",
-                d
-            ))),
-        }
-    }
-}
-
-impl<'a> Serialize for &'a RawDocument {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        struct KvpSerializer<'a>(&'a RawDocument);
-
-        impl<'a> Serialize for KvpSerializer<'a> {
-            fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-            where
-                S: serde::Serializer,
-            {
-                if serializer.is_human_readable() {
-                    let mut map = serializer.serialize_map(None)?;
-                    for kvp in self.0 {
-                        let (k, v) = kvp.map_err(serde::ser::Error::custom)?;
-                        map.serialize_entry(k, &v)?;
-                    }
-                    map.end()
-                } else {
-                    serializer.serialize_bytes(self.0.as_bytes())
-                }
-            }
-        }
-        serializer.serialize_newtype_struct(RAW_DOCUMENT_NEWTYPE, &KvpSerializer(self))
     }
 }
 

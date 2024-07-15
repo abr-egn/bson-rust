@@ -1,10 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use serde::{Deserialize, Serialize};
-
 use crate::{
     oid::{self, ObjectId},
-    raw::RAW_BSON_NEWTYPE,
     spec::ElementType,
     Binary,
     Bson,
@@ -23,11 +20,7 @@ use crate::{
     Timestamp,
 };
 
-use super::{
-    serde::{bson_visitor::OwnedOrBorrowedRawBsonVisitor, OwnedOrBorrowedRawBson},
-    Error,
-    Result,
-};
+use super::{Error, Result};
 
 /// A BSON value backed by owned raw BSON bytes.
 #[derive(Debug, Clone, PartialEq)]
@@ -424,29 +417,6 @@ impl From<DbPointer> for RawBson {
     }
 }
 
-impl<'de> Deserialize<'de> for RawBson {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match deserializer
-            .deserialize_newtype_struct(RAW_BSON_NEWTYPE, OwnedOrBorrowedRawBsonVisitor)?
-        {
-            OwnedOrBorrowedRawBson::Owned(o) => Ok(o),
-            OwnedOrBorrowedRawBson::Borrowed(b) => Ok(b.to_raw_bson()),
-        }
-    }
-}
-
-impl Serialize for RawBson {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.as_raw_bson_ref().serialize(serializer)
-    }
-}
-
 impl TryFrom<RawBson> for Bson {
     type Error = Error;
 
@@ -529,33 +499,4 @@ pub struct RawJavaScriptCodeWithScope {
 
     /// The scope document.
     pub scope: RawDocumentBuf,
-}
-
-impl<'de> Deserialize<'de> for RawJavaScriptCodeWithScope {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match RawBson::deserialize(deserializer)? {
-            RawBson::JavaScriptCodeWithScope(b) => Ok(b),
-            c => Err(serde::de::Error::custom(format!(
-                "expected CodeWithScope, but got {:?} instead",
-                c
-            ))),
-        }
-    }
-}
-
-impl Serialize for RawJavaScriptCodeWithScope {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let raw = RawJavaScriptCodeWithScopeRef {
-            code: self.code.as_str(),
-            scope: self.scope.as_ref(),
-        };
-
-        raw.serialize(serializer)
-    }
 }

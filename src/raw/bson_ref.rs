@@ -1,20 +1,9 @@
 use std::convert::{TryFrom, TryInto};
 
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
-use serde_bytes::Bytes;
-
-use super::{
-    bson::RawBson,
-    serde::{bson_visitor::OwnedOrBorrowedRawBsonVisitor, OwnedOrBorrowedRawBson},
-    Error,
-    RawArray,
-    RawDocument,
-    Result,
-};
+use super::{bson::RawBson, Error, RawArray, RawDocument, Result};
 use crate::{
-    extjson,
     oid::{self, ObjectId},
-    raw::{RawJavaScriptCodeWithScope, RAW_BSON_NEWTYPE},
+    raw::RawJavaScriptCodeWithScope,
     spec::{BinarySubtype, ElementType},
     Binary,
     Bson,
@@ -295,74 +284,6 @@ impl<'a> RawBsonRef<'a> {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for RawBsonRef<'a> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match deserializer
-            .deserialize_newtype_struct(RAW_BSON_NEWTYPE, OwnedOrBorrowedRawBsonVisitor)?
-        {
-            OwnedOrBorrowedRawBson::Borrowed(b) => Ok(b),
-            o => Err(serde::de::Error::custom(format!(
-                "RawBson must be deserialized from borrowed content, instead got {:?}",
-                o
-            ))),
-        }
-    }
-}
-
-impl<'a> Serialize for RawBsonRef<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            RawBsonRef::Double(v) => serializer.serialize_f64(*v),
-            RawBsonRef::String(v) => serializer.serialize_str(v),
-            RawBsonRef::Array(v) => v.serialize(serializer),
-            RawBsonRef::Document(v) => v.serialize(serializer),
-            RawBsonRef::Boolean(v) => serializer.serialize_bool(*v),
-            RawBsonRef::Null => serializer.serialize_unit(),
-            RawBsonRef::Int32(v) => serializer.serialize_i32(*v),
-            RawBsonRef::Int64(v) => serializer.serialize_i64(*v),
-            RawBsonRef::ObjectId(oid) => oid.serialize(serializer),
-            RawBsonRef::DateTime(dt) => dt.serialize(serializer),
-            RawBsonRef::Binary(b) => b.serialize(serializer),
-            RawBsonRef::JavaScriptCode(c) => {
-                let mut state = serializer.serialize_struct("$code", 1)?;
-                state.serialize_field("$code", c)?;
-                state.end()
-            }
-            RawBsonRef::JavaScriptCodeWithScope(code_w_scope) => code_w_scope.serialize(serializer),
-            RawBsonRef::DbPointer(dbp) => dbp.serialize(serializer),
-            RawBsonRef::Symbol(s) => {
-                let mut state = serializer.serialize_struct("$symbol", 1)?;
-                state.serialize_field("$symbol", s)?;
-                state.end()
-            }
-            RawBsonRef::RegularExpression(re) => re.serialize(serializer),
-            RawBsonRef::Timestamp(t) => t.serialize(serializer),
-            RawBsonRef::Decimal128(d) => d.serialize(serializer),
-            RawBsonRef::Undefined => {
-                let mut state = serializer.serialize_struct("$undefined", 1)?;
-                state.serialize_field("$undefined", &true)?;
-                state.end()
-            }
-            RawBsonRef::MaxKey => {
-                let mut state = serializer.serialize_struct("$maxKey", 1)?;
-                state.serialize_field("$maxKey", &1)?;
-                state.end()
-            }
-            RawBsonRef::MinKey => {
-                let mut state = serializer.serialize_struct("$minKey", 1)?;
-                state.serialize_field("$minKey", &1)?;
-                state.end()
-            }
-        }
-    }
-}
-
 impl<'a> TryFrom<RawBsonRef<'a>> for Bson {
     type Error = Error;
 
@@ -476,56 +397,6 @@ impl<'a> RawBinaryRef<'a> {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for RawBinaryRef<'a> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match RawBsonRef::deserialize(deserializer)? {
-            RawBsonRef::Binary(b) => Ok(b),
-            c => Err(serde::de::Error::custom(format!(
-                "expected binary, but got {:?} instead",
-                c
-            ))),
-        }
-    }
-}
-
-impl<'a> Serialize for RawBinaryRef<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        if let BinarySubtype::Generic = self.subtype {
-            serializer.serialize_bytes(self.bytes)
-        } else if !serializer.is_human_readable() {
-            #[derive(Serialize)]
-            struct BorrowedBinary<'a> {
-                bytes: &'a Bytes,
-
-                #[serde(rename = "subType")]
-                subtype: u8,
-            }
-
-            let mut state = serializer.serialize_struct("$binary", 1)?;
-            let body = BorrowedBinary {
-                bytes: Bytes::new(self.bytes),
-                subtype: self.subtype.into(),
-            };
-            state.serialize_field("$binary", &body)?;
-            state.end()
-        } else {
-            let mut state = serializer.serialize_struct("$binary", 1)?;
-            let body = extjson::models::BinaryBody {
-                base64: base64::encode(self.bytes),
-                subtype: hex::encode([self.subtype.into()]),
-            };
-            state.serialize_field("$binary", &body)?;
-            state.end()
-        }
-    }
-}
-
 impl<'a> From<RawBinaryRef<'a>> for RawBsonRef<'a> {
     fn from(b: RawBinaryRef<'a>) -> Self {
         RawBsonRef::Binary(b)
@@ -554,42 +425,6 @@ pub struct RawRegexRef<'a> {
     pub options: &'a str,
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for RawRegexRef<'a> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match RawBsonRef::deserialize(deserializer)? {
-            RawBsonRef::RegularExpression(b) => Ok(b),
-            c => Err(serde::de::Error::custom(format!(
-                "expected Regex, but got {:?} instead",
-                c
-            ))),
-        }
-    }
-}
-
-impl<'a> Serialize for RawRegexRef<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        #[derive(Serialize)]
-        struct BorrowedRegexBody<'a> {
-            pattern: &'a str,
-            options: &'a str,
-        }
-
-        let mut state = serializer.serialize_struct("$regularExpression", 1)?;
-        let body = BorrowedRegexBody {
-            pattern: self.pattern,
-            options: self.options,
-        };
-        state.serialize_field("$regularExpression", &body)?;
-        state.end()
-    }
-}
-
 impl<'a> From<RawRegexRef<'a>> for RawBsonRef<'a> {
     fn from(re: RawRegexRef<'a>) -> Self {
         RawBsonRef::RegularExpression(re)
@@ -612,33 +447,6 @@ impl<'a> RawJavaScriptCodeWithScopeRef<'a> {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for RawJavaScriptCodeWithScopeRef<'a> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match RawBsonRef::deserialize(deserializer)? {
-            RawBsonRef::JavaScriptCodeWithScope(b) => Ok(b),
-            c => Err(serde::de::Error::custom(format!(
-                "expected CodeWithScope, but got {:?} instead",
-                c
-            ))),
-        }
-    }
-}
-
-impl<'a> Serialize for RawJavaScriptCodeWithScopeRef<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("$codeWithScope", 2)?;
-        state.serialize_field("$code", &self.code)?;
-        state.serialize_field("$scope", &self.scope)?;
-        state.end()
-    }
-}
-
 impl<'a> From<RawJavaScriptCodeWithScopeRef<'a>> for RawBsonRef<'a> {
     fn from(code_w_scope: RawJavaScriptCodeWithScopeRef<'a>) -> Self {
         RawBsonRef::JavaScriptCodeWithScope(code_w_scope)
@@ -650,43 +458,4 @@ impl<'a> From<RawJavaScriptCodeWithScopeRef<'a>> for RawBsonRef<'a> {
 pub struct RawDbPointerRef<'a> {
     pub(crate) namespace: &'a str,
     pub(crate) id: ObjectId,
-}
-
-impl<'de: 'a, 'a> Deserialize<'de> for RawDbPointerRef<'a> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match RawBsonRef::deserialize(deserializer)? {
-            RawBsonRef::DbPointer(b) => Ok(b),
-            c => Err(serde::de::Error::custom(format!(
-                "expected DbPointer, but got {:?} instead",
-                c
-            ))),
-        }
-    }
-}
-
-impl<'a> Serialize for RawDbPointerRef<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        #[derive(Serialize)]
-        struct BorrowedDbPointerBody<'a> {
-            #[serde(rename = "$ref")]
-            ref_ns: &'a str,
-
-            #[serde(rename = "$id")]
-            id: ObjectId,
-        }
-
-        let mut state = serializer.serialize_struct("$dbPointer", 1)?;
-        let body = BorrowedDbPointerBody {
-            ref_ns: self.namespace,
-            id: self.id,
-        };
-        state.serialize_field("$dbPointer", &body)?;
-        state.end()
-    }
 }

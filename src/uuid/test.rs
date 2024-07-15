@@ -1,15 +1,17 @@
+#[cfg(feature = "serde")]
+use crate::{from_document, from_slice, Document};
 use crate::{
-    from_document,
-    from_slice,
     spec::BinarySubtype,
     uuid::{Uuid, UuidRepresentation},
     Binary,
     Bson,
-    Document,
 };
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_json::json;
 
+#[cfg(feature = "serde")]
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct U {
     uuid: Uuid,
@@ -28,6 +30,7 @@ fn into_bson() {
     assert_eq!(bson, Bson::Binary(binary));
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn raw_serialization() {
     let u = U { uuid: Uuid::new() };
@@ -40,6 +43,7 @@ fn raw_serialization() {
     assert_eq!(u_roundtrip, u);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn bson_serialization() {
     let u = U { uuid: Uuid::new() };
@@ -59,6 +63,7 @@ fn bson_serialization() {
     assert_eq!(u_roundtrip, u);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn json() {
     let u = U { uuid: Uuid::new() };
@@ -70,6 +75,7 @@ fn json() {
     assert_eq!(u_roundtrip_json, u);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn wrong_subtype() {
     let generic = doc! {
@@ -272,6 +278,7 @@ fn interop_1() {
     assert_eq!(d_bson, d_uuid);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn deserialize_uuid_from_string() {
     #[derive(Deserialize)]

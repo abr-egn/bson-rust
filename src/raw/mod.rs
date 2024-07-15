@@ -120,13 +120,15 @@ mod document;
 mod document_buf;
 mod error;
 mod iter;
-pub(crate) mod serde;
 #[cfg(test)]
 mod test;
 
 use std::convert::{TryFrom, TryInto};
 
-use crate::de::MIN_BSON_STRING_SIZE;
+pub(crate) const MAX_BSON_SIZE: i32 = 16 * 1024 * 1024;
+pub(crate) const MIN_BSON_DOCUMENT_SIZE: i32 = 4 + 1; // 4 bytes for length, one byte for null terminator
+pub(crate) const MIN_BSON_STRING_SIZE: i32 = 4 + 1; // 4 bytes for length, one byte for null terminator
+pub(crate) const MIN_CODE_WITH_SCOPE_SIZE: i32 = 4 + MIN_BSON_STRING_SIZE + MIN_BSON_DOCUMENT_SIZE;
 
 pub use self::{
     array::{RawArray, RawArrayIter},
@@ -194,6 +196,18 @@ fn i64_from_slice(val: &[u8]) -> Result<i64> {
             })
         })?;
     Ok(i64::from_le_bytes(arr))
+}
+
+fn bool_from_slice(val: &[u8]) -> Result<bool> {
+    let val = u8::from_le_bytes(val.try_into()?);
+    if val > 1 {
+        return Err(Error::new_without_key(ErrorKind::new_malformed(format!(
+            "boolean must be stored as 0 or 1, got {}",
+            val
+        ))));
+    }
+
+    Ok(val != 0)
 }
 
 fn read_len(buf: &[u8]) -> Result<usize> {

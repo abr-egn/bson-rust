@@ -37,13 +37,6 @@ impl Decimal128 {
     pub fn bytes(&self) -> [u8; 128 / 8] {
         self.bytes
     }
-
-    pub(crate) fn deserialize_from_slice<E: serde::de::Error>(
-        bytes: &[u8],
-    ) -> std::result::Result<Self, E> {
-        let arr: [u8; 128 / 8] = bytes.try_into().map_err(E::custom)?;
-        Ok(Decimal128 { bytes: arr })
-    }
 }
 
 impl fmt::Debug for Decimal128 {

@@ -1,7 +1,6 @@
 use std::convert::TryInto;
 
 use crate::{
-    de::{read_bool, MIN_BSON_DOCUMENT_SIZE, MIN_CODE_WITH_SCOPE_SIZE},
     oid::ObjectId,
     raw::{Error, ErrorKind, Result},
     spec::{BinarySubtype, ElementType},
@@ -18,6 +17,7 @@ use crate::{
 };
 
 use super::{
+    bool_from_slice,
     checked_add,
     error::try_with_key,
     f64_from_slice,
@@ -28,6 +28,8 @@ use super::{
     try_to_str,
     RawBsonRef,
     RawDocument,
+    MIN_BSON_DOCUMENT_SIZE,
+    MIN_CODE_WITH_SCOPE_SIZE,
 };
 
 /// An iterator over the document's entries.
@@ -175,9 +177,9 @@ impl<'a> RawElement<'a> {
             ElementType::Array => {
                 RawBsonRef::Array(RawArray::from_doc(RawDocument::from_bytes(self.slice())?))
             }
-            ElementType::Boolean => {
-                RawBsonRef::Boolean(read_bool(self.slice()).map_err(|e| self.malformed_error(e))?)
-            }
+            ElementType::Boolean => RawBsonRef::Boolean(
+                bool_from_slice(self.slice()).map_err(|e| self.malformed_error(e))?,
+            ),
             ElementType::DateTime => {
                 RawBsonRef::DateTime(DateTime::from_millis(i64_from_slice(self.slice())?))
             }
@@ -201,9 +203,9 @@ impl<'a> RawElement<'a> {
                         .read_cstring_at(self.start_at + pattern.len() + 1)?,
                 })
             }
-            ElementType::Timestamp => RawBsonRef::Timestamp(
-                Timestamp::from_reader(self.slice()).map_err(|e| self.malformed_error(e))?,
-            ),
+            ElementType::Timestamp => {
+                RawBsonRef::Timestamp(Timestamp::from_le_bytes(self.slice().try_into()?))
+            }
             ElementType::Binary => {
                 let len = self.size.checked_sub(4 + 1).ok_or_else(|| {
                     self.malformed_error(format!("length exceeds maximum: {}", self.size))

@@ -4,21 +4,20 @@ use std::{
     convert::TryInto,
     error,
     fmt::{self, Debug, Display, Formatter},
-    io::{Read, Write},
+    io::Read,
     iter::{Extend, FromIterator, IntoIterator},
 };
 
 use ahash::RandomState;
 use indexmap::IndexMap;
-use serde::{de::Error, Deserialize};
 
 use crate::{
     bson::{Array, Bson, Timestamp},
-    de::{read_i32, MIN_BSON_DOCUMENT_SIZE},
     oid::ObjectId,
     spec::BinarySubtype,
     Binary,
     Decimal128,
+    RawDocumentBuf,
 };
 
 /// Error to indicate that either a value was empty or it contained an unexpected
@@ -525,89 +524,25 @@ impl Document {
         }
     }
 
-    /// Attempts to serialize the [`Document`] into a byte stream.
-    ///
-    /// While the method signature indicates an owned writer must be passed in, a mutable reference
-    /// may also be passed in due to blanket implementations of [`Write`] provided in the standard
-    /// library.
-    ///
-    /// ```
-    /// # fn main() -> bson::ser::Result<()> {
-    /// use bson::doc;
-    ///
-    /// let mut v: Vec<u8> = Vec::new();
-    /// let doc = doc! { "x" : 1 };
-    /// doc.to_writer(&mut v)?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn to_writer<W: Write>(&self, mut writer: W) -> crate::ser::Result<()> {
-        let buf = crate::to_vec(self)?;
-        writer.write_all(&buf)?;
-        Ok(())
+    /// Attempts to encode the [`Document`] into a byte buffer.
+    pub fn to_bytes(&self) -> crate::raw::Result<Vec<u8>> {
+        let raw: RawDocumentBuf = self.try_into()?;
+        Ok(raw.into_bytes())
     }
 
-    fn decode<R: Read + ?Sized>(reader: &mut R, utf_lossy: bool) -> crate::de::Result<Document> {
-        let length = read_i32(reader)?;
-        if length < MIN_BSON_DOCUMENT_SIZE {
-            return Err(crate::de::Error::invalid_length(
-                length as usize,
-                &"document length must be at least 5",
-            ));
-        }
-        let ulen: usize =
-            length
-                .try_into()
-                .map_err(|e| crate::de::Error::DeserializationError {
-                    message: format!("invalid document length: {}", e),
-                })?;
-        let mut buf = vec![0u8; ulen];
-        buf[0..4].copy_from_slice(&length.to_le_bytes());
-        reader.read_exact(&mut buf[4..])?;
-        let mut deserializer = crate::de::RawDeserializer::new(&buf, utf_lossy);
-        Document::deserialize(&mut deserializer)
+    /// Attempts to decode a [`Document`] from a byte buffer.
+    pub fn from_bytes(bytes: impl Into<Vec<u8>>) -> crate::raw::Result<Self> {
+        let raw = RawDocumentBuf::from_bytes(bytes.into())?;
+        raw.to_document()
     }
 
-    /// Attempts to deserialize a [`Document`] from a byte stream.
-    ///
-    /// While the method signature indicates an owned reader must be passed in, a mutable reference
-    /// may also be passed in due to blanket implementations of [`Read`] provided in the standard
-    /// library.
-    ///
-    /// ```
-    /// # use std::error::Error;
-    /// # fn main() -> std::result::Result<(), Box<dyn Error>> {
-    /// use bson::{doc, Document};
-    /// use std::io::Cursor;
-    ///
-    /// let mut v: Vec<u8> = Vec::new();
-    /// let doc = doc! { "x" : 1 };
-    /// doc.to_writer(&mut v)?;
-    ///
-    /// // read from mutable reference
-    /// let mut reader = Cursor::new(v.clone());
-    /// let doc1 = Document::from_reader(&mut reader)?;
-    ///
-    /// // read from owned value
-    /// let doc2 = Document::from_reader(Cursor::new(v))?;
-    ///
-    /// assert_eq!(doc, doc1);
-    /// assert_eq!(doc, doc2);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn from_reader<R: Read>(mut reader: R) -> crate::de::Result<Document> {
-        Self::decode(&mut reader, false)
-    }
-
-    /// Attempt to deserialize a [`Document`] that may contain invalid UTF-8 strings from a byte
-    /// stream.
-    ///
-    /// This is mainly useful when reading raw BSON returned from a MongoDB server, which
-    /// in rare cases can contain invalidly truncated strings (<https://jira.mongodb.org/browse/SERVER-24007>).
-    /// For most use cases, `Document::from_reader` can be used instead.
-    pub fn from_reader_utf8_lossy<R: Read>(mut reader: R) -> crate::de::Result<Document> {
-        Self::decode(&mut reader, true)
+    /// Attempts to decode a [`Document`] from a reader.
+    pub fn from_reader<R: Read + ?Sized>(
+        reader: &mut R,
+        utf8_lossy: bool,
+    ) -> crate::raw::Result<Self> {
+        let raw = RawDocumentBuf::from_reader(reader, utf8_lossy)?;
+        raw.to_document()
     }
 }
 

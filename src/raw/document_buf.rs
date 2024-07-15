@@ -1,24 +1,23 @@
 use std::{
     borrow::{Borrow, Cow},
     convert::{TryFrom, TryInto},
+    io::Read,
     iter::FromIterator,
     ops::Deref,
 };
 
-use serde::{Deserialize, Serialize};
-
-use crate::{de::MIN_BSON_DOCUMENT_SIZE, spec::BinarySubtype, Document};
+use crate::{spec::BinarySubtype, Document};
 
 use super::{
     bson::RawBson,
     iter::Iter,
-    serde::OwnedOrBorrowedRawDocument,
     Error,
     ErrorKind,
     RawBsonRef,
     RawDocument,
     RawIter,
     Result,
+    MIN_BSON_DOCUMENT_SIZE,
 };
 
 /// An owned BSON document (akin to [`std::path::PathBuf`]), backed by a buffer of raw BSON bytes.
@@ -88,9 +87,31 @@ impl RawDocumentBuf {
     /// let doc = RawDocumentBuf::from_bytes(b"\x05\0\0\0\0".to_vec())?;
     /// # Ok::<(), Error>(())
     /// ```
-    pub fn from_bytes(data: Vec<u8>) -> Result<RawDocumentBuf> {
+    pub fn from_bytes(data: impl Into<Vec<u8>>) -> Result<RawDocumentBuf> {
+        let data: Vec<u8> = data.into();
         let _ = RawDocument::from_bytes(data.as_slice())?;
         Ok(Self { data })
+    }
+
+    pub fn from_reader<R: Read + ?Sized>(reader: &mut R, utf8_lossy: bool) -> Result<Self> {
+        let mut len_bytes = [0; 4];
+        reader.read_exact(&mut len_bytes)?;
+        let length = i32::from_le_bytes(len_bytes);
+        if length < MIN_BSON_DOCUMENT_SIZE {
+            return Err(Error::new_without_key(ErrorKind::new_malformed(format!(
+                "document length must be at least 5, was {}",
+                length
+            ))));
+        }
+        let ulen: usize = length.try_into().map_err(|e| {
+            Error::new_without_key(ErrorKind::new_malformed(format!(
+                "invalid document length: {}",
+                e
+            )))
+        })?;
+        let mut buf = vec![0u8; ulen];
+        buf[0..4].copy_from_slice(&length.to_le_bytes());
+        reader.read_exact(&mut buf[4..])?;
     }
 
     /// Create a [`RawDocumentBuf`] from a [`Document`].
@@ -108,15 +129,11 @@ impl RawDocumentBuf {
     /// # Ok::<(), Error>(())
     /// ```
     pub fn from_document(doc: &Document) -> Result<RawDocumentBuf> {
-        let mut data = Vec::new();
-        doc.to_writer(&mut data).map_err(|e| Error {
-            key: None,
-            kind: ErrorKind::MalformedValue {
-                message: e.to_string(),
-            },
-        })?;
-
-        Ok(Self { data })
+        let mut out = RawDocumentBuf::new();
+        for (k, v) in doc.iter() {
+            out.append_ref(k, v);
+        }
+        Ok(out)
     }
 
     /// Gets an iterator over the elements in the [`RawDocumentBuf`], which yields
@@ -330,25 +347,6 @@ impl RawDocumentBuf {
 impl Default for RawDocumentBuf {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<'de> Deserialize<'de> for RawDocumentBuf {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Ok(OwnedOrBorrowedRawDocument::deserialize(deserializer)?.into_owned())
-    }
-}
-
-impl Serialize for RawDocumentBuf {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let doc: &RawDocument = self.deref();
-        doc.serialize(serializer)
     }
 }
 

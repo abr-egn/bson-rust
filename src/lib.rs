@@ -280,18 +280,6 @@ pub use self::{
     binary::Binary,
     bson::{Array, Bson, DbPointer, Document, JavaScriptCodeWithScope, Regex, Timestamp},
     datetime::DateTime,
-    de::{
-        from_bson,
-        from_bson_with_options,
-        from_document,
-        from_document_with_options,
-        from_reader,
-        from_reader_utf8_lossy,
-        from_slice,
-        from_slice_utf8_lossy,
-        Deserializer,
-        DeserializerOptions,
-    },
     decimal128::Decimal128,
     raw::{
         RawArray,
@@ -306,16 +294,6 @@ pub use self::{
         RawJavaScriptCodeWithScopeRef,
         RawRegexRef,
     },
-    ser::{
-        to_bson,
-        to_bson_with_options,
-        to_document,
-        to_document_with_options,
-        to_raw_document_buf,
-        to_vec,
-        Serializer,
-        SerializerOptions,
-    },
     uuid::{Uuid, UuidRepresentation},
 };
 
@@ -324,14 +302,12 @@ mod macros;
 pub mod binary;
 mod bson;
 pub mod datetime;
-pub mod de;
 pub mod decimal128;
 pub mod document;
+#[cfg(feature = "serde")]
 pub mod extjson;
 pub mod oid;
 pub mod raw;
-pub mod ser;
-pub mod serde_helpers;
 pub mod spec;
 pub mod uuid;
 

@@ -1,8 +1,8 @@
-//! Deserializing [MongoDB Extended JSON v2](https://www.mongodb.com/docs/manual/reference/mongodb-extended-json/)
+//! Decoding [MongoDB Extended JSON v2](https://www.mongodb.com/docs/manual/reference/mongodb-extended-json/)
 //!
 //! ## Usage
 //!
-//! Extended JSON can be deserialized using [`Bson`](../../enum.Bson.html)'s
+//! Extended JSON can be decoded using [`Bson`](../../enum.Bson.html)'s
 //! `TryFrom<serde_json::Value>` implementation. This implementation accepts both canonical and
 //! relaxed extJSON, and the two modes can even be mixed within a single representation.
 //!
@@ -22,8 +22,6 @@
 //! ```
 
 use std::convert::{TryFrom, TryInto};
-
-use serde::de::{Error as _, Unexpected};
 
 use crate::{extjson::models, oid, Bson, Document};
 
@@ -49,17 +47,6 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-impl serde::de::Error for Error {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
-        Self::DeserializationError {
-            message: format!("{}", msg),
-        }
-    }
-}
 
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
@@ -189,11 +176,11 @@ impl TryFrom<serde_json::Value> for Bson {
                     }
                 })
                 .or_else(|| x.as_f64().map(Bson::from))
-                .ok_or_else(|| {
-                    Error::invalid_value(
-                        Unexpected::Other(format!("{}", x).as_str()),
-                        &"a number that could fit in i32, i64, or f64",
-                    )
+                .ok_or_else(|| Error::DeserializationError {
+                    message: format!(
+                        "expected a number that could fit in i32, i64, or f64, got {}",
+                        x
+                    ),
                 }),
             serde_json::Value::String(x) => Ok(x.into()),
             serde_json::Value::Bool(x) => Ok(x.into()),
