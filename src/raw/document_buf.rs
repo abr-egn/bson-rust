@@ -87,15 +87,17 @@ impl RawDocumentBuf {
     /// let doc = RawDocumentBuf::from_bytes(b"\x05\0\0\0\0".to_vec())?;
     /// # Ok::<(), Error>(())
     /// ```
-    pub fn from_bytes(data: impl Into<Vec<u8>>) -> Result<RawDocumentBuf> {
+    pub fn from_bytes(data: impl Into<Vec<u8>>) -> Result<Self> {
         let data: Vec<u8> = data.into();
         let _ = RawDocument::from_bytes(data.as_slice())?;
         Ok(Self { data })
     }
 
-    pub fn from_reader<R: Read + ?Sized>(reader: &mut R, utf8_lossy: bool) -> Result<Self> {
+    pub fn from_reader<R: Read + ?Sized>(reader: &mut R) -> Result<Self> {
         let mut len_bytes = [0; 4];
-        reader.read_exact(&mut len_bytes)?;
+        reader
+            .read_exact(&mut len_bytes)
+            .map_err(Error::new_malformed)?;
         let length = i32::from_le_bytes(len_bytes);
         if length < MIN_BSON_DOCUMENT_SIZE {
             return Err(Error::new_without_key(ErrorKind::new_malformed(format!(
@@ -111,7 +113,10 @@ impl RawDocumentBuf {
         })?;
         let mut buf = vec![0u8; ulen];
         buf[0..4].copy_from_slice(&length.to_le_bytes());
-        reader.read_exact(&mut buf[4..])?;
+        reader
+            .read_exact(&mut buf[4..])
+            .map_err(Error::new_malformed)?;
+        Self::from_bytes(buf)
     }
 
     /// Create a [`RawDocumentBuf`] from a [`Document`].
@@ -131,7 +136,8 @@ impl RawDocumentBuf {
     pub fn from_document(doc: &Document) -> Result<RawDocumentBuf> {
         let mut out = RawDocumentBuf::new();
         for (k, v) in doc.iter() {
-            out.append_ref(k, v);
+            let raw: RawBson = v.clone().try_into()?;
+            out.append(k, raw);
         }
         Ok(out)
     }

@@ -537,11 +537,8 @@ impl Document {
     }
 
     /// Attempts to decode a [`Document`] from a reader.
-    pub fn from_reader<R: Read + ?Sized>(
-        reader: &mut R,
-        utf8_lossy: bool,
-    ) -> crate::raw::Result<Self> {
-        let raw = RawDocumentBuf::from_reader(reader, utf8_lossy)?;
+    pub fn from_reader<R: Read + ?Sized>(reader: &mut R) -> crate::raw::Result<Self> {
+        let raw = RawDocumentBuf::from_reader(reader)?;
         raw.to_document()
     }
 }

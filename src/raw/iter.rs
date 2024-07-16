@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{borrow::Cow, convert::TryInto};
 
 use crate::{
     oid::ObjectId,
@@ -203,9 +203,11 @@ impl<'a> RawElement<'a> {
                         .read_cstring_at(self.start_at + pattern.len() + 1)?,
                 })
             }
-            ElementType::Timestamp => {
-                RawBsonRef::Timestamp(Timestamp::from_le_bytes(self.slice().try_into()?))
-            }
+            ElementType::Timestamp => RawBsonRef::Timestamp(Timestamp::from_le_bytes(
+                self.slice()
+                    .try_into()
+                    .map_err(|e| self.malformed_error(e))?,
+            )),
             ElementType::Binary => {
                 let len = self.size.checked_sub(4 + 1).ok_or_else(|| {
                     self.malformed_error(format!("length exceeds maximum: {}", self.size))
@@ -256,6 +258,10 @@ impl<'a> RawElement<'a> {
                 RawBsonRef::JavaScriptCodeWithScope(RawJavaScriptCodeWithScopeRef { code, scope })
             }
         })
+    }
+
+    pub fn value_utf8_lossy(&self) -> Result<Cow<RawBsonRef>> {
+        todo!()
     }
 
     fn malformed_error(&self, e: impl ToString) -> Error {

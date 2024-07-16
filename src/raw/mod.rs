@@ -199,7 +199,7 @@ fn i64_from_slice(val: &[u8]) -> Result<i64> {
 }
 
 fn bool_from_slice(val: &[u8]) -> Result<bool> {
-    let val = u8::from_le_bytes(val.try_into()?);
+    let val = u8::from_le_bytes(val.try_into().map_err(Error::new_malformed)?);
     if val > 1 {
         return Err(Error::new_without_key(ErrorKind::new_malformed(format!(
             "boolean must be stored as 0 or 1, got {}",
