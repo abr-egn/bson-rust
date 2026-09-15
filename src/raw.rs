@@ -181,9 +181,9 @@ pub(crate) const RAW_ARRAY_NEWTYPE: &str = "$__private__bson_RawArray";
 #[cfg(feature = "serde")]
 pub(crate) const RAW_BSON_NEWTYPE: &str = "$__private__bson_RawBson";
 
-const MAX_RECURSION: u32 = 100;
+const MAX_RECURSION: u32 = 200;
 
-fn check_recursion_limit(depth: u32) -> Result<()> {
+pub(crate) fn check_recursion_limit(depth: u32) -> Result<()> {
     if !cfg!(feature = "unbounded-recursion") && depth > MAX_RECURSION {
         return Result::Err(Error::recursion_limit());
     }

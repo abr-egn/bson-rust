@@ -28,6 +28,7 @@ use crate::{
         RawIter,
         Utf8LossyBson,
         Utf8LossyJavaScriptCodeWithScope,
+        check_recursion_limit,
     },
     serde_helpers::HUMAN_READABLE_NEWTYPE,
     spec::{BinarySubtype, ElementType},
@@ -48,6 +49,16 @@ pub struct RawDeserializer<'de> {
 struct DeserializerOptions {
     utf8_lossy: bool,
     human_readable: bool,
+    depth: u32,
+}
+
+impl DeserializerOptions {
+    fn deeper(&self) -> Self {
+        Self {
+            depth: self.depth.saturating_add(1),
+            ..self.clone()
+        }
+    }
 }
 
 impl<'de> RawDeserializer<'de> {
@@ -60,6 +71,7 @@ impl<'de> RawDeserializer<'de> {
             options: DeserializerOptions {
                 utf8_lossy: false,
                 human_readable: false,
+                depth: 0,
             },
         })
     }
@@ -318,6 +330,7 @@ struct DocumentAccess<'de> {
 
 impl<'de> DocumentAccess<'de> {
     fn new(doc: &'de RawDocument, options: DeserializerOptions) -> Result<Self> {
+        check_recursion_limit(options.depth)?;
         Ok(Self {
             iter: doc.iter_elements(),
             elem: None,
@@ -370,7 +383,7 @@ impl<'de> serde::de::MapAccess<'de> for DocumentAccess<'de> {
             None => Err(Error::deserialization("too many values requested")),
             Some(elem) => seed.deserialize(RawDeserializer {
                 element: elem.clone(),
-                options: self.options.clone(),
+                options: self.options.deeper(),
             }),
         }
     }
@@ -392,7 +405,7 @@ impl<'de> serde::de::SeqAccess<'de> for DocumentAccess<'de> {
             Some(elem) => seed
                 .deserialize(RawDeserializer {
                     element: elem.clone(),
-                    options: self.options.clone(),
+                    options: self.options.deeper(),
                 })
                 .map(Some),
         }
@@ -1163,7 +1176,7 @@ impl<'de> serde::de::Deserializer<'de> for &CodeWithScopeAccess<'de> {
                 };
                 match self.hint {
                     DeserializerHint::RawBson => visitor.visit_map(RawDocumentAccess::new(scope)),
-                    _ => visitor.visit_map(DocumentAccess::new(scope, self.options.clone())?),
+                    _ => visitor.visit_map(DocumentAccess::new(scope, self.options.deeper())?),
                 }
             }
             CodeWithScopeDeserializationStage::Done => Err(Error::end_of_stream()),
