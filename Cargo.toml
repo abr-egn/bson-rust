@@ -33,7 +33,8 @@ exclude = [
 
 [features]
 default = ["compat-3-0-0"]
-compat-3-0-0 = []
+compat-3-0-0 = ["unbounded-recursion", "compat-3-2-0"]
+compat-3-2-0 = []
 # if enabled, include API for interfacing with chrono 0.4
 chrono-0_4 = ["dep:chrono"]
 # if enabled, include API for interfacing with jiff 0.2
@@ -51,6 +52,7 @@ serde_with-3 = ["dep:serde_with", "dep:serde"]
 serde = ["dep:serde"]
 serde_json-1 = ["dep:serde_json"]
 facet-unstable = ["dep:facet", "dep:facet-value", "dep:facet-format", "dep:facet-reflect", "dep:paste"]
+unbounded-recursion = []
 
 [lib]
 name = "bson"

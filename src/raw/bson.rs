@@ -19,6 +19,7 @@ use crate::{
     Regex,
     Timestamp,
     oid::{self, ObjectId},
+    raw::check_recursion_limit,
     spec::ElementType,
 };
 
@@ -332,6 +333,7 @@ impl RawBson {
     }
 
     pub(crate) fn try_into_parsed(self, depth: u32) -> Result<Bson> {
+        check_recursion_limit(depth)?;
         Ok(match self {
             Self::Double(d) => Bson::Double(d),
             Self::String(s) => Bson::String(s),

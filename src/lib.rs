@@ -483,21 +483,21 @@ pub use self::{
 #[doc(inline)]
 pub use self::{
     de::{
+        Deserializer,
         deserialize_from_bson,
         deserialize_from_document,
         deserialize_from_reader,
         deserialize_from_slice,
         raw::RawDeserializer,
-        Deserializer,
     },
     ser::{
+        Serializer,
         raw::RawSerializer,
         serialize_to_bson,
         serialize_to_buffer,
         serialize_to_document,
         serialize_to_raw_document_buf,
         serialize_to_vec,
-        Serializer,
     },
 };
 
@@ -529,8 +529,8 @@ pub mod uuid;
 #[cfg(test)]
 mod tests;
 
-#[cfg(not(feature = "compat-3-0-0"))]
+#[cfg(not(feature = "compat-3-2-0"))]
 compile_error!(
-    "The feature 'compat-3-0-0' must be enabled to ensure forward compatibility with future \
+    "The feature 'compat-3-2-0' must be enabled to ensure forward compatibility with future \
      versions of this crate."
 );

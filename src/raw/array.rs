@@ -16,6 +16,7 @@ use crate::{
     Timestamp,
     error::{Error, Result},
     oid::ObjectId,
+    raw::check_recursion_limit,
     spec::ElementType,
 };
 
@@ -221,6 +222,7 @@ impl RawArray {
     }
 
     pub(crate) fn try_into_parsed(&self, depth: u32) -> RawResult<Vec<Bson>> {
+        check_recursion_limit(depth)?;
         self.into_iter()
             .map(|result| {
                 let rawbson = result?;

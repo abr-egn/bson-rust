@@ -16,6 +16,7 @@ use crate::{
         CStr,
         MIN_CODE_WITH_SCOPE_SIZE,
         RawJavaScriptCodeWithScope,
+        check_recursion_limit,
         checked_add,
         i32_from_slice,
         read_cstring,
@@ -303,6 +304,7 @@ impl<'a> RawBsonRef<'a> {
     }
 
     pub(crate) fn try_into_parsed(self, depth: u32) -> Result<Bson> {
+        check_recursion_limit(depth)?;
         Ok(match self {
             Self::Double(d) => Bson::Double(d),
             Self::String(s) => Bson::String(s.to_owned()),

@@ -14,7 +14,7 @@ use crate::{
     Utf8Lossy,
     error::{Error, Result},
     oid::ObjectId,
-    raw::CStr,
+    raw::{CStr, check_recursion_limit},
     spec::ElementType,
 };
 
@@ -481,6 +481,7 @@ impl RawDocument {
     }
 
     pub(crate) fn try_into_parsed(&self, depth: u32) -> RawResult<Document> {
+        check_recursion_limit(depth)?;
         self.into_iter()
             .map(|res| {
                 res.and_then(|(k, v)| {
@@ -594,19 +595,23 @@ impl TryFrom<&RawDocument> for Utf8Lossy<Document> {
         let mut out = Document::new();
         for elem in rawdoc.iter_elements() {
             let elem = elem?;
-            let value = deep_utf8_lossy(elem.value_utf8_lossy()?)?;
+            let value = deep_utf8_lossy(elem.value_utf8_lossy()?, 0)?;
             out.insert(elem.key().as_str(), value);
         }
         Ok(Utf8Lossy(out))
     }
 }
 
-fn deep_utf8_lossy(src: RawBson) -> RawResult<Bson> {
+fn deep_utf8_lossy(src: RawBson, depth: u32) -> RawResult<Bson> {
+    check_recursion_limit(depth)?;
     match src {
         RawBson::Array(arr) => {
             let mut tmp = vec![];
             for elem in arr.iter_elements() {
-                tmp.push(deep_utf8_lossy(elem?.value_utf8_lossy()?)?);
+                tmp.push(deep_utf8_lossy(
+                    elem?.value_utf8_lossy()?,
+                    depth.saturating_add(1),
+                )?);
             }
             Ok(Bson::Array(tmp))
         }
@@ -616,7 +621,7 @@ fn deep_utf8_lossy(src: RawBson) -> RawResult<Bson> {
                 let elem = elem?;
                 tmp.insert(
                     elem.key().as_str(),
-                    deep_utf8_lossy(elem.value_utf8_lossy()?)?,
+                    deep_utf8_lossy(elem.value_utf8_lossy()?, depth.saturating_add(1))?,
                 );
             }
             Ok(Bson::Document(tmp))
@@ -627,7 +632,7 @@ fn deep_utf8_lossy(src: RawBson) -> RawResult<Bson> {
                 let elem = elem?;
                 tmp.insert(
                     elem.key().as_str(),
-                    deep_utf8_lossy(elem.value_utf8_lossy()?)?,
+                    deep_utf8_lossy(elem.value_utf8_lossy()?, depth.saturating_add(1))?,
                 );
             }
             Ok(Bson::JavaScriptCodeWithScope(JavaScriptCodeWithScope {
