@@ -479,6 +479,19 @@ impl RawDocument {
     pub fn is_empty(&self) -> bool {
         self.as_bytes().len() == MIN_BSON_DOCUMENT_SIZE as usize
     }
+
+    pub(crate) fn try_into_parsed(&self, depth: u32) -> RawResult<Document> {
+        self.into_iter()
+            .map(|res| {
+                res.and_then(|(k, v)| {
+                    Ok((
+                        k.as_str().to_owned(),
+                        v.try_into_parsed(depth.saturating_add(1))?,
+                    ))
+                })
+            })
+            .collect()
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -562,10 +575,7 @@ impl TryFrom<&RawDocument> for Document {
     type Error = RawError;
 
     fn try_from(rawdoc: &RawDocument) -> RawResult<Document> {
-        rawdoc
-            .into_iter()
-            .map(|res| res.and_then(|(k, v)| Ok((k.as_str().to_owned(), v.try_into()?))))
-            .collect()
+        rawdoc.try_into_parsed(0)
     }
 }
 

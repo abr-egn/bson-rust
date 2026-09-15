@@ -301,6 +301,37 @@ impl<'a> RawBsonRef<'a> {
             Self::Null | Self::Undefined | Self::MinKey | Self::MaxKey => {}
         }
     }
+
+    pub(crate) fn try_into_parsed(self, depth: u32) -> Result<Bson> {
+        Ok(match self {
+            Self::Double(d) => Bson::Double(d),
+            Self::String(s) => Bson::String(s.to_owned()),
+            Self::Document(rawdoc) => Bson::Document(rawdoc.try_into_parsed(depth)?),
+            Self::Array(rawarray) => Bson::Array(rawarray.try_into_parsed(depth)?),
+            Self::Binary(rawbson) => Bson::Binary(rawbson.to_binary()),
+            Self::ObjectId(rawbson) => Bson::ObjectId(rawbson),
+            Self::Boolean(rawbson) => Bson::Boolean(rawbson),
+            Self::DateTime(rawbson) => Bson::DateTime(rawbson),
+            Self::Null => Bson::Null,
+            Self::RegularExpression(rawregex) => Bson::RegularExpression(rawregex.into()),
+            Self::JavaScriptCode(rawbson) => Bson::JavaScriptCode(rawbson.to_owned()),
+            Self::Int32(rawbson) => Bson::Int32(rawbson),
+            Self::Timestamp(rawbson) => Bson::Timestamp(rawbson),
+            Self::Int64(rawbson) => Bson::Int64(rawbson),
+            Self::Undefined => Bson::Undefined,
+            Self::DbPointer(rawbson) => Bson::DbPointer(rawbson.into()),
+            Self::Symbol(rawbson) => Bson::Symbol(rawbson.to_owned()),
+            Self::JavaScriptCodeWithScope(rawbson) => {
+                Bson::JavaScriptCodeWithScope(crate::JavaScriptCodeWithScope {
+                    code: rawbson.code.to_owned(),
+                    scope: rawbson.scope.try_into_parsed(depth)?,
+                })
+            }
+            Self::Decimal128(rawbson) => Bson::Decimal128(rawbson),
+            Self::MaxKey => Bson::MaxKey,
+            Self::MinKey => Bson::MinKey,
+        })
+    }
 }
 
 impl<'a> PartialEq for RawBsonRef<'a> {
@@ -486,7 +517,7 @@ impl<'a> TryFrom<RawBsonRef<'a>> for Bson {
     type Error = Error;
 
     fn try_from(rawbson: RawBsonRef<'a>) -> Result<Bson> {
-        RawBson::from(rawbson).try_into()
+        rawbson.try_into_parsed(0)
     }
 }
 
@@ -785,9 +816,12 @@ impl<'a> From<RawRegexRef<'a>> for RawBsonRef<'a> {
 
 impl<'a> From<RawRegexRef<'a>> for Regex {
     fn from(value: RawRegexRef<'a>) -> Self {
+        let mut chars: Vec<_> = value.options.as_str().chars().collect();
+        chars.sort_unstable();
+        let options: String = chars.into_iter().collect();
         Self {
             pattern: value.pattern.to_owned(),
-            options: value.options.to_owned(),
+            options: super::CString::from_string_unchecked(options),
         }
     }
 }
