@@ -480,32 +480,78 @@ fn fuzz_oom() {
 }
 
 #[cfg(not(feature = "unbounded-recursion"))]
-#[test]
-fn nesting_limit() {
-    use crate::Document;
+mod nesting_test {
+    /// Wrap `body` as the sole element of a document, with element type `element_type` and the
+    /// given key.
+    fn wrap_in_document(element_type: u8, key: &[u8], body: &[u8]) -> Vec<u8> {
+        let mut elements = vec![element_type];
+        elements.extend_from_slice(key);
+        elements.push(0x00);
+        elements.extend_from_slice(body);
 
-    fn nested_bson_bytes(depth: usize) -> Vec<u8> {
-        let mut doc: Vec<u8> = vec![5, 0, 0, 0, 0]; // empty document
-        for _ in 0..depth {
-            let mut body = vec![0x03]; // document-typed element
-            body.extend_from_slice(b"d\0");
-            body.extend_from_slice(&doc);
-            body.push(0x00);
-            let mut new_doc = ((4 + body.len()) as i32).to_le_bytes().to_vec();
-            new_doc.extend_from_slice(&body);
-            doc = new_doc;
+        let mut doc = ((4 + elements.len() + 1) as i32).to_le_bytes().to_vec();
+        doc.extend_from_slice(&elements);
+        doc.push(0x00);
+        doc
+    }
+
+    /// Build bytes for a document nested `depth` levels deep, where each level is wrapped by the
+    /// next element type yielded by `element_types` (cycled).
+    fn nested_bson_bytes(depth: usize, element_types: &[u8]) -> Vec<u8> {
+        const EMPTY_DOCUMENT: [u8; 5] = [5, 0, 0, 0, 0];
+
+        let mut doc = EMPTY_DOCUMENT.to_vec();
+        for level in 0..depth {
+            doc = match element_types[level % element_types.len()] {
+                // code-with-scope: i32 total length, then a length-prefixed code string, then the
+                // scope document.
+                0x0f => {
+                    let code: &[u8] = b"\x01\x00\x00\x00\x00"; // empty string
+                    let len = 4 + code.len() + doc.len();
+                    let mut cws = (len as i32).to_le_bytes().to_vec();
+                    cws.extend_from_slice(code);
+                    cws.extend_from_slice(&doc);
+                    wrap_in_document(0x0f, b"c", &cws)
+                }
+                // an array is a document whose keys are the stringified indices
+                element_type @ 0x04 => wrap_in_document(element_type, b"0", &doc),
+                element_type => wrap_in_document(element_type, b"d", &doc),
+            };
         }
         doc
     }
 
-    let bytes = nested_bson_bytes(10_000);
-    let err = Document::from_reader(bytes.as_slice()).unwrap_err();
-    assert!(err.is_recursion_limit(), "{err:?}");
+    #[test]
+    fn nesting_limit() {
+        use crate::Document;
 
-    #[cfg(feature = "serde")]
-    {
-        let err = crate::deserialize_from_slice::<Document>(&bytes).unwrap_err();
-        assert!(err.is_recursion_limit(), "{err:?}");
+        // documents, arrays, alternating documents and arrays, and code-with-scope
+        for element_types in [&[0x03][..], &[0x04][..], &[0x03, 0x04][..], &[0x0f][..]] {
+            let bytes = nested_bson_bytes(10_000, element_types);
+
+            let err = Document::from_reader(bytes.as_slice()).unwrap_err();
+            assert!(err.is_recursion_limit(), "{element_types:?}: {err:?}");
+
+            let err =
+                Document::try_from(crate::RawDocument::from_bytes(&bytes).unwrap()).unwrap_err();
+            assert!(err.is_recursion_limit(), "{element_types:?}: {err:?}");
+
+            let err = crate::Utf8Lossy::<Document>::try_from(
+                crate::RawDocument::from_bytes(&bytes).unwrap(),
+            )
+            .unwrap_err();
+            assert!(err.is_recursion_limit(), "{element_types:?}: {err:?}");
+
+            #[cfg(feature = "serde")]
+            {
+                let err = crate::deserialize_from_slice::<Document>(&bytes).unwrap_err();
+                assert!(err.is_recursion_limit(), "{element_types:?}: {err:?}");
+
+                let err = crate::deserialize_from_slice::<crate::Utf8Lossy<Document>>(&bytes)
+                    .unwrap_err();
+                assert!(err.is_recursion_limit(), "{element_types:?}: {err:?}");
+            }
+        }
     }
 }
 

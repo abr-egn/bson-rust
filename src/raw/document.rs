@@ -630,9 +630,10 @@ fn deep_utf8_lossy(src: RawBson, depth: u32) -> RawResult<Bson> {
             let mut tmp = doc! {};
             for elem in scope.iter_elements() {
                 let elem = elem?;
+                // the scope is a nested document, so it counts as an extra level of nesting
                 tmp.insert(
                     elem.key().as_str(),
-                    deep_utf8_lossy(elem.value_utf8_lossy()?, depth.saturating_add(1))?,
+                    deep_utf8_lossy(elem.value_utf8_lossy()?, depth.saturating_add(2))?,
                 );
             }
             Ok(Bson::JavaScriptCodeWithScope(JavaScriptCodeWithScope {

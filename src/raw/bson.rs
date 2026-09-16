@@ -355,7 +355,7 @@ impl RawBson {
             Self::JavaScriptCodeWithScope(rawbson) => {
                 Bson::JavaScriptCodeWithScope(crate::JavaScriptCodeWithScope {
                     code: rawbson.code,
-                    scope: rawbson.scope.try_into_parsed(depth)?,
+                    scope: rawbson.scope.try_into_parsed(depth.saturating_add(1))?,
                 })
             }
             Self::Decimal128(rawbson) => Bson::Decimal128(rawbson),

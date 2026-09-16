@@ -82,6 +82,9 @@ impl<'de> RawDeserializer<'de> {
 
     /// Deserialize the element, using the type of the element along with the
     /// provided hint to determine how to visit the data.
+    ///
+    /// Non-recursive cases are delegated to helper functions to keep stack accumulation during
+    /// recursion minimal.
     fn deserialize_hint<V>(&self, visitor: V, hint: DeserializerHint) -> Result<V::Value>
     where
         V: serde::de::Visitor<'de>,
@@ -89,39 +92,14 @@ impl<'de> RawDeserializer<'de> {
         if self.options.utf8_lossy {
             if let Some(lossy) = self.element.value_utf8_lossy_inner()? {
                 return match lossy {
-                    Utf8LossyBson::String(s) => visitor.visit_string(s),
-                    Utf8LossyBson::RegularExpression(re) => {
-                        visitor.visit_map(SingleFieldAccess::regex(BsonCow::Owned(re)))
+                    Utf8LossyBson::JavaScriptCodeWithScope(jsc) => {
+                        self.deserialize_code_with_scope(visitor, BsonCow::Owned(jsc), hint)
                     }
-                    Utf8LossyBson::JavaScriptCode(code) => visitor.visit_map(MapDeserializer::new(
-                        doc! { "$code": code },
-                        crate::de::serde::DeserializerOptions {
-                            human_readable: Some(false),
-                        },
-                    )),
-                    Utf8LossyBson::JavaScriptCodeWithScope(jsc) => visitor.visit_map(
-                        CodeWithScopeAccess::new(BsonCow::Owned(jsc), hint, self.options.clone()),
-                    ),
-                    Utf8LossyBson::DbPointer(dbp) => {
-                        visitor.visit_map(SingleFieldAccess::db_pointer(BsonCow::Owned(dbp), hint))
-                    }
-                    Utf8LossyBson::Symbol(s) => visitor.visit_map(MapDeserializer::new(
-                        doc! { "$symbol": s },
-                        crate::de::serde::DeserializerOptions {
-                            human_readable: Some(false),
-                        },
-                    )),
+                    leaf => self.deserialize_utf8_lossy_leaf(visitor, leaf, hint),
                 };
             }
         }
         match self.value()? {
-            RawBsonRef::Int32(i) => visitor.visit_i32(i),
-            RawBsonRef::Int64(i) => visitor.visit_i64(i),
-            RawBsonRef::Double(d) => visitor.visit_f64(d),
-            RawBsonRef::String(s) => visitor.visit_borrowed_str(s),
-            RawBsonRef::Boolean(b) => visitor.visit_bool(b),
-            RawBsonRef::Null => visitor.visit_unit(),
-            RawBsonRef::ObjectId(oid) => visitor.visit_map(SingleFieldAccess::oid(oid, hint)),
             RawBsonRef::Document(doc) => match hint {
                 DeserializerHint::RawBson => visitor.visit_map(RawDocumentAccess::new(doc)),
                 _ => visitor.visit_map(DocumentAccess::new(doc, self.options.clone())?),
@@ -132,6 +110,40 @@ impl<'de> RawDeserializer<'de> {
                 }
                 _ => visitor.visit_seq(DocumentAccess::new(arr.as_doc(), self.options.clone())?),
             },
+            RawBsonRef::JavaScriptCodeWithScope(jsc) => {
+                self.deserialize_code_with_scope(visitor, BsonCow::Borrowed(jsc), hint)
+            }
+            leaf => self.deserialize_leaf(visitor, leaf, hint),
+        }
+    }
+
+    /// Visit a value that does not recurse into another document.
+    #[inline(never)]
+    fn deserialize_leaf<V>(
+        &self,
+        visitor: V,
+        value: RawBsonRef<'de>,
+        hint: DeserializerHint,
+    ) -> Result<V::Value>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        match value {
+            RawBsonRef::Document(_)
+            | RawBsonRef::Array(_)
+            | RawBsonRef::JavaScriptCodeWithScope(_) => {
+                debug_assert!(false, "recursive value passed to deserialize_leaf");
+                Err(Error::deserialization(
+                    "internal error: recursive value passed to leaf handler",
+                ))
+            }
+            RawBsonRef::Int32(i) => visitor.visit_i32(i),
+            RawBsonRef::Int64(i) => visitor.visit_i64(i),
+            RawBsonRef::Double(d) => visitor.visit_f64(d),
+            RawBsonRef::String(s) => visitor.visit_borrowed_str(s),
+            RawBsonRef::Boolean(b) => visitor.visit_bool(b),
+            RawBsonRef::Null => visitor.visit_unit(),
+            RawBsonRef::ObjectId(oid) => visitor.visit_map(SingleFieldAccess::oid(oid, hint)),
             RawBsonRef::Binary(bin) => {
                 if let DeserializerHint::BinarySubtype(expected_subtype) = hint {
                     if bin.subtype != expected_subtype {
@@ -166,9 +178,6 @@ impl<'de> RawDeserializer<'de> {
                 visitor.visit_map(SingleFieldAccess::db_pointer(BsonCow::Borrowed(dbp), hint))
             }
             RawBsonRef::JavaScriptCode(s) => visitor.visit_map(SingleFieldAccess::code(s)),
-            RawBsonRef::JavaScriptCodeWithScope(jsc) => visitor.visit_map(
-                CodeWithScopeAccess::new(BsonCow::Borrowed(jsc), hint, self.options.clone()),
-            ),
             RawBsonRef::Symbol(s) => visitor.visit_map(SingleFieldAccess::symbol(s)),
             RawBsonRef::Timestamp(ts) => {
                 let mut d = TimestampDeserializer::new(ts);
@@ -180,6 +189,64 @@ impl<'de> RawDeserializer<'de> {
             RawBsonRef::MaxKey => visitor.visit_map(SingleFieldAccess::max_key()),
             RawBsonRef::MinKey => visitor.visit_map(SingleFieldAccess::min_key()),
         }
+    }
+
+    /// Visit a utf8-lossy value that does not recurse into another document.
+    #[inline(never)]
+    fn deserialize_utf8_lossy_leaf<V>(
+        &self,
+        visitor: V,
+        value: Utf8LossyBson<'de>,
+        hint: DeserializerHint,
+    ) -> Result<V::Value>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        match value {
+            Utf8LossyBson::JavaScriptCodeWithScope(_) => {
+                debug_assert!(
+                    false,
+                    "recursive value passed to deserialize_utf8_lossy_leaf"
+                );
+                Err(Error::deserialization(
+                    "internal error: recursive value passed to leaf handler",
+                ))
+            }
+            Utf8LossyBson::String(s) => visitor.visit_string(s),
+            Utf8LossyBson::RegularExpression(re) => {
+                visitor.visit_map(SingleFieldAccess::regex(BsonCow::Owned(re)))
+            }
+            Utf8LossyBson::JavaScriptCode(code) => visitor.visit_map(MapDeserializer::new(
+                doc! { "$code": code },
+                crate::de::serde::DeserializerOptions {
+                    human_readable: Some(false),
+                },
+            )),
+            Utf8LossyBson::DbPointer(dbp) => {
+                visitor.visit_map(SingleFieldAccess::db_pointer(BsonCow::Owned(dbp), hint))
+            }
+            Utf8LossyBson::Symbol(s) => visitor.visit_map(MapDeserializer::new(
+                doc! { "$symbol": s },
+                crate::de::serde::DeserializerOptions {
+                    human_readable: Some(false),
+                },
+            )),
+        }
+    }
+
+    /// CodeWithScope is recursive, but it also has a large stack cost from `CodeWithScopeAccess`,
+    /// so it gets its own helper to isolate that from the common recursive path.
+    #[inline(never)]
+    fn deserialize_code_with_scope<V>(
+        &self,
+        visitor: V,
+        jsc: BsonCow<RawJavaScriptCodeWithScopeRef<'de>, Utf8LossyJavaScriptCodeWithScope<'de>>,
+        hint: DeserializerHint,
+    ) -> Result<V::Value>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_map(CodeWithScopeAccess::new(jsc, hint, self.options.clone()))
     }
 
     fn get_string(&self) -> Result<Cow<'de, str>> {
@@ -1176,7 +1243,9 @@ impl<'de> serde::de::Deserializer<'de> for &CodeWithScopeAccess<'de> {
                 };
                 match self.hint {
                     DeserializerHint::RawBson => visitor.visit_map(RawDocumentAccess::new(scope)),
-                    _ => visitor.visit_map(DocumentAccess::new(scope, self.options.clone())?),
+                    // the scope is a nested document, so it counts as another level of nesting;
+                    // keep this in sync with the code-with-scope handling in `raw`.
+                    _ => visitor.visit_map(DocumentAccess::new(scope, self.options.deeper())?),
                 }
             }
             CodeWithScopeDeserializationStage::Done => Err(Error::end_of_stream()),
