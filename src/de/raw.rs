@@ -131,12 +131,9 @@ impl<'de> RawDeserializer<'de> {
         match value {
             RawBsonRef::Document(_)
             | RawBsonRef::Array(_)
-            | RawBsonRef::JavaScriptCodeWithScope(_) => {
-                debug_assert!(false, "recursive value passed to deserialize_leaf");
-                Err(Error::deserialization(
-                    "internal error: recursive value passed to leaf handler",
-                ))
-            }
+            | RawBsonRef::JavaScriptCodeWithScope(_) => Err(Error::deserialization(
+                "internal error: recursive value passed to leaf handler",
+            )),
             RawBsonRef::Int32(i) => visitor.visit_i32(i),
             RawBsonRef::Int64(i) => visitor.visit_i64(i),
             RawBsonRef::Double(d) => visitor.visit_f64(d),
@@ -203,15 +200,9 @@ impl<'de> RawDeserializer<'de> {
         V: serde::de::Visitor<'de>,
     {
         match value {
-            Utf8LossyBson::JavaScriptCodeWithScope(_) => {
-                debug_assert!(
-                    false,
-                    "recursive value passed to deserialize_utf8_lossy_leaf"
-                );
-                Err(Error::deserialization(
-                    "internal error: recursive value passed to leaf handler",
-                ))
-            }
+            Utf8LossyBson::JavaScriptCodeWithScope(_) => Err(Error::deserialization(
+                "internal error: recursive value passed to leaf handler",
+            )),
             Utf8LossyBson::String(s) => visitor.visit_string(s),
             Utf8LossyBson::RegularExpression(re) => {
                 visitor.visit_map(SingleFieldAccess::regex(BsonCow::Owned(re)))
