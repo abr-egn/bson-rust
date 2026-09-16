@@ -310,9 +310,8 @@ impl<'de> Visitor<'de> for BsonVisitor {
     }
 }
 
-/// Dispatch an extended-JSON key to its handler, consuming its value from `visitor`.
-///
-/// Recursive handlers are distinct from the leaf handler to minimize stack growth during recursion.
+/// Dispatch an extended-JSON key to its handler.  Recursive handlers are distinct from the leaf
+/// handler to minimize stack growth during recursion.
 #[inline(never)]
 fn visit_extjson_key<'de, V>(
     key: &str,
@@ -322,8 +321,6 @@ where
     V: MapAccess<'de>,
 {
     match key {
-        // `$code`/`$scope` get their own handlers because, unlike the other extended-JSON keys,
-        // they recurse into a nested document.
         "$code" => visit_extjson_code(visitor).map(Some),
         "$scope" => visit_extjson_scope(visitor).map(Some),
         _ => visit_extjson_leaf(key, visitor),
