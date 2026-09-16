@@ -324,7 +324,7 @@
 //!
 //! e.g.
 //! ```rust
-//! # #[cfg(feature = "serde")]
+//! # #[cfg(all(feature = "serde", feature = "serde_json-1"))]
 //! # {
 //! # use bson::bson;
 //! let doc = bson!({ "x": 5, "d": bson::DateTime::now() });
@@ -349,7 +349,7 @@
 //!
 //! e.g.
 //! ```rust
-//! # #[cfg(feature = "serde")]
+//! # #[cfg(all(feature = "serde", feature = "serde_json-1"))]
 //! # {
 //! # use bson::Bson;
 //! # use serde_json::json;
@@ -373,7 +373,7 @@
 //!
 //! e.g.
 //! ```rust
-//! # #[cfg(feature = "serde")]
+//! # #[cfg(all(feature = "serde", feature = "serde_json-1"))]
 //! # {
 //! # use bson::{bson, oid};
 //! let doc = bson!({ "x": 5i32, "_id": oid::ObjectId::new() });
