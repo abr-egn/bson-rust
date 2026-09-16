@@ -261,4 +261,9 @@ impl Error {
     pub(crate) fn recursion_limit() -> Self {
         ErrorKind::RecursionLimit {}.into()
     }
+
+    #[cfg(all(test, not(feature = "unbounded-recursion")))]
+    pub(crate) fn is_recursion_limit(&self) -> bool {
+        matches!(self.kind, ErrorKind::RecursionLimit { .. })
+    }
 }

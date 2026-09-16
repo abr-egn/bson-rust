@@ -479,6 +479,36 @@ fn fuzz_oom() {
     let _ = crate::deserialize_from_slice::<crate::Document>(bytes);
 }
 
+#[cfg(not(feature = "unbounded-recursion"))]
+#[test]
+fn nesting_limit() {
+    use crate::Document;
+
+    fn nested_bson_bytes(depth: usize) -> Vec<u8> {
+        let mut doc: Vec<u8> = vec![5, 0, 0, 0, 0]; // empty document
+        for _ in 0..depth {
+            let mut body = vec![0x03]; // document-typed element
+            body.extend_from_slice(b"d\0");
+            body.extend_from_slice(&doc);
+            body.push(0x00);
+            let mut new_doc = ((4 + body.len()) as i32).to_le_bytes().to_vec();
+            new_doc.extend_from_slice(&body);
+            doc = new_doc;
+        }
+        doc
+    }
+
+    let bytes = nested_bson_bytes(10_000);
+    let err = Document::from_reader(bytes.as_slice()).unwrap_err();
+    assert!(err.is_recursion_limit(), "{err:?}");
+
+    #[cfg(feature = "serde")]
+    {
+        let err = crate::deserialize_from_slice::<Document>(&bytes).unwrap_err();
+        assert!(err.is_recursion_limit(), "{err:?}");
+    }
+}
+
 use props::arbitrary_bson;
 use proptest::prelude::*;
 use std::convert::TryInto;
