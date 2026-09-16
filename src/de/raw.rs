@@ -1243,8 +1243,6 @@ impl<'de> serde::de::Deserializer<'de> for &CodeWithScopeAccess<'de> {
                 };
                 match self.hint {
                     DeserializerHint::RawBson => visitor.visit_map(RawDocumentAccess::new(scope)),
-                    // the scope is a nested document, so it counts as another level of nesting;
-                    // keep this in sync with the code-with-scope handling in `raw`.
                     _ => visitor.visit_map(DocumentAccess::new(scope, self.options.deeper())?),
                 }
             }

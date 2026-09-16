@@ -330,14 +330,7 @@ where
     }
 }
 
-/// Handle an extended-JSON key that does not recurse into a nested document, consuming its value
-/// from `visitor`.
-///
-/// Returns `Ok(None)`, without touching `visitor`, if `key` is not a recognized extended-JSON key;
-/// the caller must then treat it as an ordinary document field.
-///
-/// This is a separate, non-inlined function to keep [`BsonVisitor::visit_map`]'s stack frame small;
-/// see the note there.
+/// Handle an extended-JSON key that does not recurse into a nested document.
 #[inline(never)]
 fn visit_extjson_leaf<'de, V>(
     key: &str,

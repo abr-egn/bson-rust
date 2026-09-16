@@ -181,13 +181,6 @@ pub(crate) const RAW_ARRAY_NEWTYPE: &str = "$__private__bson_RawArray";
 #[cfg(feature = "serde")]
 pub(crate) const RAW_BSON_NEWTYPE: &str = "$__private__bson_RawBson";
 
-/// The maximum nesting depth of a decoded value; matches the limit used by the C driver and the
-/// server.
-///
-/// Note that this bounds nesting depth, not stack usage: the decoding paths in this crate budget a
-/// few KB of stack per level (see the notes on `deserialize_hint` and `BsonVisitor::visit_map` in
-/// `de`), but a user `Deserialize` implementation can use arbitrarily more per level. The
-/// `nesting_limit` test covers the crate's own per-level cost.
 const MAX_RECURSION: u32 = 200;
 
 pub(crate) fn check_recursion_limit(depth: u32) -> Result<()> {
