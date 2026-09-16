@@ -354,7 +354,7 @@ impl<'de> DocumentAccess<'de> {
         };
         Ok(RawDeserializer {
             element: elem,
-            options: self.options,
+            options: self.options.deeper(),
         })
     }
 }
@@ -1176,7 +1176,7 @@ impl<'de> serde::de::Deserializer<'de> for &CodeWithScopeAccess<'de> {
                 };
                 match self.hint {
                     DeserializerHint::RawBson => visitor.visit_map(RawDocumentAccess::new(scope)),
-                    _ => visitor.visit_map(DocumentAccess::new(scope, self.options.deeper())?),
+                    _ => visitor.visit_map(DocumentAccess::new(scope, self.options.clone())?),
                 }
             }
             CodeWithScopeDeserializationStage::Done => Err(Error::end_of_stream()),
