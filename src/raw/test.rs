@@ -479,7 +479,7 @@ fn fuzz_oom() {
     let _ = crate::deserialize_from_slice::<crate::Document>(bytes);
 }
 
-#[cfg(not(feature = "unbounded-recursion"))]
+#[cfg(not(feature = "unbounded-depth"))]
 mod nesting_test {
     use crate::{
         Document,
@@ -496,6 +496,7 @@ mod nesting_test {
         Array,
         CodeWithScope,
     }
+
     fn nested_bson(depth: usize, nesting: &[Nesting]) -> RawDocumentBuf {
         let mut doc = RawDocumentBuf::new();
 

@@ -265,8 +265,7 @@ impl<'de> Visitor<'de> for BsonVisitor {
         let mut doc = Document::new();
 
         while let Some(k) = visitor.next_key::<String>()? {
-            // Every extended-JSON key is `$`-prefixed, so anything else is an ordinary field.
-            if k.as_bytes().first() == Some(&b'$') {
+            if k.starts_with('$') {
                 if let Some(bson) = visit_extjson_key(k.as_str(), &mut visitor)? {
                     return Ok(bson);
                 }

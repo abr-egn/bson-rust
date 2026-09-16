@@ -529,8 +529,8 @@ pub mod uuid;
 #[cfg(test)]
 mod tests;
 
-#[cfg(not(feature = "compat-3-2-0"))]
+#[cfg(not(feature = "compat-3-0-0"))]
 compile_error!(
-    "The feature 'compat-3-2-0' must be enabled to ensure forward compatibility with future \
+    "The feature 'compat-3-0-0' must be enabled to ensure forward compatibility with future \
      versions of this crate."
 );

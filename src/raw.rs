@@ -184,7 +184,7 @@ pub(crate) const RAW_BSON_NEWTYPE: &str = "$__private__bson_RawBson";
 const MAX_RECURSION: u32 = 200;
 
 pub(crate) fn check_recursion_limit(depth: u32) -> Result<()> {
-    if !cfg!(feature = "unbounded-recursion") && depth > MAX_RECURSION {
+    if !cfg!(feature = "unbounded-depth") && depth > MAX_RECURSION {
         return Result::Err(Error::recursion_limit());
     }
     Ok(())
